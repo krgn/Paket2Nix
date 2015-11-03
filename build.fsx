@@ -339,10 +339,10 @@ Target "All" DoNothing
   ==> "Build"
   ==> "CopyBinaries"
   ==> "RunTests"
-  ==> "GenerateReferenceDocs"
-  ==> "GenerateDocs"
+  //  ==> "GenerateReferenceDocs"
+  //  ==> "GenerateDocs"
   ==> "All"
-  =?> ("ReleaseDocs",isLocalBuild)
+  // =?> ("ReleaseDocs",isLocalBuild)
 
 "All" 
 #if MONO
@@ -352,19 +352,19 @@ Target "All" DoNothing
   ==> "NuGet"
   ==> "BuildPackage"
 
-"CleanDocs"
-  ==> "GenerateHelp"
-  ==> "GenerateReferenceDocs"
-  ==> "GenerateDocs"
+// "CleanDocs"
+//   ==> "GenerateHelp"
+//   ==> "GenerateReferenceDocs"
+//   ==> "GenerateDocs"
+// 
+// "CleanDocs"
+//   ==> "GenerateHelpDebug"
 
-"CleanDocs"
-  ==> "GenerateHelpDebug"
-
-"GenerateHelp"
-  ==> "KeepRunning"
-    
-"ReleaseDocs"
-  ==> "Release"
+// "GenerateHelp"
+//   ==> "KeepRunning"
+//     
+// "ReleaseDocs"
+//   ==> "Release"
 
 "BuildPackage"
   ==> "PublishNuget"
