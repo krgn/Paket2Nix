@@ -1,0 +1,23 @@
+type project
+owners
+    Karsten Gebbert
+authors 
+    Karsten Gebbert
+projectUrl
+    http://github.com/krgn/Paket2Nix
+iconUrl
+    https://raw.githubusercontent.com/krgn/Paket2Nix/master/docs/files/img/logo.png
+licenseUrl
+    http://github.com/krgn/Paket2Nix/blob/master/LICENSE.txt
+requireLicenseAcceptance
+    false
+copyright
+    Copyright 2015
+tags
+    Paket Nuget Nix NixOS
+summary
+    Convert Paket Projects Into Nix Expressions
+description
+    Helper to turn nuget/paket packages into nix packages.
+
+
