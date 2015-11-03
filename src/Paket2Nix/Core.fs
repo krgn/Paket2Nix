@@ -17,11 +17,30 @@
 
 module Paket2Nix.Core
 
+open System
+open System.IO
+open System.Security.Cryptography
+open System.Net
 open Paket
 
-let hello str = failwith str
 
 let parseLockFile path =
   LockFile.LoadFrom path
   |> (fun f -> f.ToString ())
   |> printfn "%s"
+
+
+let fetchSha256 (url : string) : string = 
+  let wc = new WebClient()
+  let path = Path.GetTempFileName()
+
+  wc.DownloadFile(url, path)
+
+  File.ReadAllBytes(path)
+  |> HashAlgorithm.Create("SHA256").ComputeHash
+  |> BitConverter.ToString
+  |> (fun result -> result.Replace("-","").ToLower())
+
+
+let paket2Nix _ = failwith "FIXME"
+
