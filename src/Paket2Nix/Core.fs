@@ -86,7 +86,7 @@ stdenv.mkDerivation {
 
   unpackPhase = ''
     mkdir -p ""$out/lib/mono/packages/$pkgname-$version/$name"";
-    unzip -x ""$src"" ""$out/lib/mono/packages/$pkgname-$version/$name"";
+    unzip -x ""$src"" -d ""$out/lib/mono/packages/$pkgname-$version/$name"";
   '';
 }
 "
