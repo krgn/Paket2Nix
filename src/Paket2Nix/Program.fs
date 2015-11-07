@@ -21,6 +21,9 @@ open Paket2Nix.Core
 
 [<EntryPoint>]
 let main args =
+
   paket2Nix (args.[0])
-  |> List.iter (fun p -> printfn "%s" (p.ToString()))
+  |> Async.RunSynchronously
+  |> Array.iter (fun pkg -> printfn "%s" (pkg.ToString()))
+
   0

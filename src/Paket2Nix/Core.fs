@@ -20,6 +20,7 @@ module Paket2Nix.Core
 open System
 open System.IO
 open System.Security.Cryptography
+open Microsoft.FSharp.Control 
 open System.Net
 open Paket
 
@@ -30,20 +31,18 @@ type Sha256  = string
 type Rev     = string
 
 (* slightly nicer way of replacing strings *)
-let internal replace (str : string) (src : string) tgt =
-  str.Replace(src,tgt)
+let internal replace (from : string) (two : string) (target : string) =
+  target.Replace(from,two)
 
 (*
   Template function for a git-based `src` section.
 *)
 let internal gitTmpl (url : Url) (sha : Sha256) (rev : Rev) =
-  @"
-fetchgit {
-  url    = ""$url"";
-  sha256 = ""$sha"";
-  rev    = ""$rev"";
-};
-"
+  @"fetchgit {
+    url    = ""$url"";
+    sha256 = ""$sha"";
+    rev    = ""$rev"";
+  }"
   |> replace "$url" url
   |> replace "$sha" sha
   |> replace "$rev" rev
@@ -52,12 +51,10 @@ fetchgit {
   Template function for a nuget-based `src` section.
 *)
 let internal nugetTmpl (url : Url) (sha : Sha256) =
-  @"
-fetchurl {
-  url    = ""$url"";
-  sha256 = ""$sha"";
-};
-"
+  @"fetchurl {
+    url    = ""$url"";
+    sha256 = ""$sha"";
+  }"
   |> replace "$url" url
   |> replace "$sha" sha
 
@@ -114,13 +111,20 @@ let parseLockFile path =
   LockFile.LoadFrom path
 
 (*----------------------------------------------------------------------------*)
-let fetchSha256 (url : string) : string = 
-  use wc = new WebClient()
+let fetchSha256 (url : string) : Async<string> = 
+  async {
+    use wc = new WebClient()
+  
+    let! bytes = wc.AsyncDownloadData(new Uri(url))
 
-  wc.DownloadData(url)
-  |> HashAlgorithm.Create("SHA256").ComputeHash
-  |> BitConverter.ToString
-  |> (fun result -> result.Replace("-","").ToLower())
+    let sum =
+      bytes
+      |> HashAlgorithm.Create("SHA256").ComputeHash
+      |> BitConverter.ToString
+      |> (fun result -> result.Replace("-","").ToLower())
+
+    return sum
+  }
 
 (*----------------------------------------------------------------------------*)
 let getUrl (pkgres : PackageResolver.ResolvedPackage) : string =
@@ -132,22 +136,24 @@ let getUrl (pkgres : PackageResolver.ResolvedPackage) : string =
 
 
 (*----------------------------------------------------------------------------*)
-let pkgToNix (pkgres : PackageResolver.ResolvedPackage) : NixPkg =
-  let name =
-    match pkgres.Name with
-      | Domain.PackageName(u, _) -> u
+let pkgToNix (pkgres : PackageResolver.ResolvedPackage) : Async<NixPkg> =
+  async {
+    let name =
+      match pkgres.Name with
+        | Domain.PackageName(u, _) -> u
 
-  let version = pkgres.Version.ToString()
-  let url = getUrl pkgres
+    let version = pkgres.Version.ToString()
+    let url = getUrl pkgres
 
-  printfn "url: %s" url
+    printfn "downloading resource: %s" url
 
-  let sha = fetchSha256 url
+    let! sha = fetchSha256 url
 
-  { name    = name
-  ; version = version
-  ; meth    = Nuget(url, sha)
-  ; deps    = List.empty }
+    return { name    = name
+           ; version = version
+           ; meth    = Nuget(url, sha)
+           ; deps    = List.empty }
+  }
 
 (*----------------------------------------------------------------------------*)
 let getGroups path = 
@@ -155,11 +161,14 @@ let getGroups path =
   |> (fun file -> Map.toList file.Groups) 
 
 (*----------------------------------------------------------------------------*)
-let parseGroup (group : LockFileGroup) : NixPkg list =
+let parseGroup (group : LockFileGroup) : seq<Async<NixPkg>> =
   List.map (snd >> pkgToNix) (Map.toList group.Resolution)
+  |> List.toSeq
 
 (*----------------------------------------------------------------------------*)
 let paket2Nix path =
   getGroups path
-  |> List.map (snd >> parseGroup)
-  |> List.fold (fun m l -> List.append m l) List.empty 
+  |> List.toSeq
+  |> Seq.map (snd >> parseGroup)
+  |> Seq.fold (fun m l -> Seq.append m l) Seq.empty
+  |> Async.Parallel
