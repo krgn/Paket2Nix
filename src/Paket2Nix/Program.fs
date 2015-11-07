@@ -20,7 +20,5 @@ module Paket2Nix.Main
 open Paket2Nix.Core
 
 [<EntryPoint>]
-let main _ =
-  parseLockFile "paket.lock"
-  0
+let main _ = 0
   

@@ -12,7 +12,8 @@ let lf1 =
     Newtonsoft.Json (7.0.1)"
 
 let nf1 =
-  @"with import <nixpkgs> {};
+  @"
+with import <nixpkgs> {};
 
 stdenv.mkDerivation {
   name = ""newtonsoft.json-7.0.1"";
@@ -27,22 +28,11 @@ stdenv.mkDerivation {
   buildInputs = [ unzip ];
 
   unpackPhase = ''
-    mkdir -p ""$out/lib/mono/packages/newtonsoft.json-7.0.1""
-    unzip -x $src -d ""$out/lib/mono/packages/newtonsoft.json-7.0.1""
+    mkdir -p ""$out/lib/mono/packages/newtonsoft.json-7.0.1/Newtonsoft.Json""
+    unzip -x ""$src"" -d ""$out/lib/mono/packages/newtonsoft.json-7.0.1/Newtonsoft.Json""
   '';
 }
 "
-
-[<Test>]
-let ``github dependency should serialize correctly`` () =
-  let path = Path.GetTempFileName()
-  use tmpFile = File.OpenWrite path
-  tmpFile.Write (System.Text.Encoding.ASCII.GetBytes(lf1), 0, 0)
-  tmpFile.Close ()
-
-  let nix = paket2Nix tmpFile
-
-  Assert.AreEqual(42,42)
 
 [<Test>]
 let ``nuget dependency should serialize correctly`` () =
@@ -51,12 +41,23 @@ let ``nuget dependency should serialize correctly`` () =
   tmpFile.Write (System.Text.Encoding.ASCII.GetBytes(lf1), 0, 0)
   tmpFile.Close ()
 
-  let nix = paket2Nix tmpFile
+  let nix = paket2Nix path
 
-  Assert.AreEqual(42,42)
+  Assert.AreEqual(nf1,nix)
 
 [<Test>]
 let ``should synthesise correct sha256 hash for a package`` () =
   let expect = "ff2a9942325b22cccfe3e505ac8abdf46b071bcc60ef44da464df929c60fc846"
   let result = fetchSha256 "https://www.nuget.org/api/v2/package/Newtonsoft.Json/7.0.1"
   Assert.AreEqual(expect,result)
+
+[<Test>]
+let ``github dependency should serialize correctly`` () =
+  let path = Path.GetTempFileName()
+  use tmpFile = File.OpenWrite path
+  tmpFile.Write (System.Text.Encoding.ASCII.GetBytes(lf1), 0, 0)
+  tmpFile.Close ()
+
+  let nix = paket2Nix path
+
+  Assert.AreEqual(42,42)

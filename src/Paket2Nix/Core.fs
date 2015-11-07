@@ -23,12 +23,97 @@ open System.Security.Cryptography
 open System.Net
 open Paket
 
+type Name    = string
+type Version = string
+type Url     = string
+type Sha256  = string
+type Rev     = string
+
+(* slightly nicer way of replacing strings *)
+let internal replace (str : string) (src : string) tgt =
+  str.Replace(src,tgt)
+
+(*
+  Template function for a git-based `src` section.
+*)
+let internal gitTmpl (url : Url) (sha : Sha256) (rev : Rev) =
+  @"
+fetchgit {
+  url    = ""$url"";
+  sha256 = ""$sha"";
+  rev    = ""$rev"";
+};
+"
+  |> replace "$url" url
+  |> replace "$sha" sha
+  |> replace "$rev" rev
+
+(*
+  Template function for a nuget-based `src` section.
+*)
+let internal nugetTmpl (url : Url) (sha : Sha256) =
+  @"
+fetchurl {
+  url    = ""$url"";
+  sha256 = ""$sha"";
+};
+"
+  |> replace "$url" url
+  |> replace "$sha" sha
+
+
+(* A type to encode the different available repository methods. *)  
+type Method =
+  | Nuget  of url : Url * sha256 : Sha256
+  | Github of url : Url * sha256 : Sha256 * rev : Rev
+
+  with
+    override self.ToString () =
+      match self with
+        | Nuget(u, s)     -> nugetTmpl u s
+        | Github(u, s, r) -> gitTmpl u s r
+
+(*
+  Template function for a Nix package.
+*)
+let internal nixPkgTmpl (name : Name) (version : Version) (meth : Method) =
+  @"
+with import <nixpkgs> {}:
+
+stdenv.mkDerivation {
+  name = ""$pkgname-$version"";
+
+  src = $method;
+
+  phases = [ ""unpackPhase"" ];
+
+  buildInputs = [ unzip ];
+
+  unpackPhase = ''
+    mkdir -p ""$out/lib/mono/packages/$pkgname-$version/$name"";
+    unzip -x ""$src"" ""$out/lib/mono/packages/$pkgname-$version/$name"";
+  '';
+}
+"
+  |> replace "$pkgname" (name.ToLower())
+  |> replace "$name"    name
+  |> replace "$version" version
+  |> replace "$method"  (meth.ToString())
+
+(* A type of encode a Nix package. *)
+type NixPkg =
+  { name    : Name
+  ; version : Version
+  ; meth    : Method
+  ; deps    : NixPkg list
+  }
+  with
+   override self.ToString () =
+      nixPkgTmpl self.name self.version self.meth
+      
 
 let parseLockFile path =
   LockFile.LoadFrom path
-  |> (fun f -> f.ToString ())
-  |> printfn "%s"
-
 
 let fetchSha256 (url : string) : string = 
   let wc = new WebClient()
@@ -42,5 +127,29 @@ let fetchSha256 (url : string) : string =
   |> (fun result -> result.Replace("-","").ToLower())
 
 
-let paket2Nix _ = failwith "FIXME"
+let getUrl (pkgres : PackageResolver.ResolvedPackage) : string =
+  let version = pkgres.Version.ToString()
+  let name =
+    match pkgres.Name with
+      | Domain.PackageName(u, _) -> u
+  sprintf "%s/%s-%s" pkgres.Source.Url name version
 
+let pkgToNix (pkgres : PackageResolver.ResolvedPackage) : NixPkg =
+  let name =
+    match pkgres.Name with
+      | Domain.PackageName(u, _) -> u
+
+  let version = pkgres.Version.ToString()
+  let url = getUrl pkgres
+  let sha = fetchSha256 url
+
+  { name    = name
+  ; version = version
+  ; meth    = Nuget(url, sha)
+  ; deps    = List.empty }
+
+let getGroups path = 
+  parseLockFile path
+  |> (fun file -> Map.toList file.Groups) 
+
+let paket2Nix path = failwith "never"
