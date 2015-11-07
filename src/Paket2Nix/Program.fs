@@ -22,8 +22,13 @@ open Paket2Nix.Core
 [<EntryPoint>]
 let main args =
 
-  paket2Nix (args.[0])
-  |> Async.RunSynchronously
-  |> Array.iter (fun pkg -> printfn "%s" (pkg.ToString()))
+  let packages = 
+    paket2Nix (args.[0])
+    |> Async.RunSynchronously
 
+  let dest = "./nix"
+
+  writeToDisk dest packages
+  createTopLevel dest packages
+  
   0

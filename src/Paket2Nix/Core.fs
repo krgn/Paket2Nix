@@ -73,7 +73,7 @@ type Method =
 (*----------------------------------------------------------------------------*)
 let internal nixPkgTmpl (name : Name) (version : Version) (meth : Method) =
   @"
-with import <nixpkgs> {}:
+{ stdenv, fetchgit, fetchurl, unzip }:
 
 stdenv.mkDerivation {
   name = ""$pkgname-$version"";
@@ -172,3 +172,36 @@ let paket2Nix path =
   |> Seq.map (snd >> parseGroup)
   |> Seq.fold (fun m l -> Seq.append m l) Seq.empty
   |> Async.Parallel
+
+
+(*----------------------------------------------------------------------------*)
+let writeToDisk (dest : string) (pkgs : NixPkg array) : unit =
+  // if not <| Directory.Exists dest
+  // then Directory.CreateDirectory dest |> ignore
+
+  pkgs
+  |> Array.map
+    (fun p ->
+     let target = Path.Combine(dest, p.name)
+     if not <| Directory.Exists target
+     then Directory.CreateDirectory target |> ignore
+     (Path.Combine(target, "default.nix"), p.ToString()))
+  |> Array.iter File.WriteAllText
+  |> ignore
+
+(*----------------------------------------------------------------------------*)
+let internal body = @"
+with import <nixpkgs> {};
+{
+  $deps
+}"
+
+let createTopLevel (dest : string) (pkgs : NixPkg array) : unit =
+  let sanitize (str : string) : string = str.Replace(".","")
+  let line pkg = sprintf "%s = callPackage ./%s {};" (sanitize pkg.name) pkg.name
+  Array.map line pkgs
+  |> Array.toSeq
+  |> String.concat "\n"
+  |> (fun it -> body.Replace("$deps", it))
+  |> (fun res -> File.WriteAllText(Path.Combine(dest, "top.nix"), res))
+

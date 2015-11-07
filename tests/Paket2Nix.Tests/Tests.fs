@@ -13,7 +13,7 @@ let lf1 =
 
 let nf1 =
   @"
-with import <nixpkgs> {};
+{ stdenv, unzip ... };
 
 stdenv.mkDerivation {
   name = ""newtonsoft.json-7.0.1"";
