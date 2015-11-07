@@ -20,5 +20,7 @@ module Paket2Nix.Main
 open Paket2Nix.Core
 
 [<EntryPoint>]
-let main _ = 0
-  
+let main args =
+  paket2Nix (args.[0])
+  |> List.iter (fun p -> printfn "%s" (p.ToString()))
+  0

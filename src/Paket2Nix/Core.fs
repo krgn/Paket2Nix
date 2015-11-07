@@ -73,9 +73,7 @@ type Method =
         | Nuget(u, s)     -> nugetTmpl u s
         | Github(u, s, r) -> gitTmpl u s r
 
-(*
-  Template function for a Nix package.
-*)
+(*----------------------------------------------------------------------------*)
 let internal nixPkgTmpl (name : Name) (version : Version) (meth : Method) =
   @"
 with import <nixpkgs> {}:
@@ -100,7 +98,7 @@ stdenv.mkDerivation {
   |> replace "$version" version
   |> replace "$method"  (meth.ToString())
 
-(* A type of encode a Nix package. *)
+(*----------------------------------------------------------------------------*)
 type NixPkg =
   { name    : Name
   ; version : Version
@@ -110,30 +108,30 @@ type NixPkg =
   with
    override self.ToString () =
       nixPkgTmpl self.name self.version self.meth
-      
 
+(*----------------------------------------------------------------------------*)
 let parseLockFile path =
   LockFile.LoadFrom path
 
+(*----------------------------------------------------------------------------*)
 let fetchSha256 (url : string) : string = 
-  let wc = new WebClient()
-  let path = Path.GetTempFileName()
+  use wc = new WebClient()
 
-  wc.DownloadFile(url, path)
-
-  File.ReadAllBytes(path)
+  wc.DownloadData(url)
   |> HashAlgorithm.Create("SHA256").ComputeHash
   |> BitConverter.ToString
   |> (fun result -> result.Replace("-","").ToLower())
 
-
+(*----------------------------------------------------------------------------*)
 let getUrl (pkgres : PackageResolver.ResolvedPackage) : string =
   let version = pkgres.Version.ToString()
   let name =
     match pkgres.Name with
-      | Domain.PackageName(u, _) -> u
-  sprintf "%s/%s-%s" pkgres.Source.Url name version
+      | Domain.PackageName(_, l) -> l
+  sprintf "https://api.nuget.org/packages/%s.%s.nupkg" name version
 
+
+(*----------------------------------------------------------------------------*)
 let pkgToNix (pkgres : PackageResolver.ResolvedPackage) : NixPkg =
   let name =
     match pkgres.Name with
@@ -141,6 +139,9 @@ let pkgToNix (pkgres : PackageResolver.ResolvedPackage) : NixPkg =
 
   let version = pkgres.Version.ToString()
   let url = getUrl pkgres
+
+  printfn "url: %s" url
+
   let sha = fetchSha256 url
 
   { name    = name
@@ -148,8 +149,17 @@ let pkgToNix (pkgres : PackageResolver.ResolvedPackage) : NixPkg =
   ; meth    = Nuget(url, sha)
   ; deps    = List.empty }
 
+(*----------------------------------------------------------------------------*)
 let getGroups path = 
   parseLockFile path
   |> (fun file -> Map.toList file.Groups) 
 
-let paket2Nix path = failwith "never"
+(*----------------------------------------------------------------------------*)
+let parseGroup (group : LockFileGroup) : NixPkg list =
+  List.map (snd >> pkgToNix) (Map.toList group.Resolution)
+
+(*----------------------------------------------------------------------------*)
+let paket2Nix path =
+  getGroups path
+  |> List.map (snd >> parseGroup)
+  |> List.fold (fun m l -> List.append m l) List.empty 

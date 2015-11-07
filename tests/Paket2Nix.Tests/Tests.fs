@@ -41,9 +41,9 @@ let ``nuget dependency should serialize correctly`` () =
   tmpFile.Write (System.Text.Encoding.ASCII.GetBytes(lf1), 0, 0)
   tmpFile.Close ()
 
-  let nix = paket2Nix path
+  let deps = paket2Nix path
 
-  Assert.AreEqual(nf1,nix)
+  Assert.AreEqual(nf1,(List.head deps).ToString())
 
 [<Test>]
 let ``should synthesise correct sha256 hash for a package`` () =
