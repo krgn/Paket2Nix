@@ -17,13 +17,18 @@
 
 module Paket2Nix.Main
 
+open System.IO
 open Paket2Nix.Core
 
 [<EntryPoint>]
-let main args =
+let main _ =
+  if not <| File.Exists "./paket.lock"
+  then failwith "paket.lock file not found! Are you in the project root?"
+
+  let lockFile = parseLockFile "./paket.lock"
 
   let packages = 
-    paket2Nix (args.[0])
+    paket2Nix lockFile
     |> Async.RunSynchronously
 
   let dest = "./nix"

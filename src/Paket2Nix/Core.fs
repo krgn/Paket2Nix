@@ -23,12 +23,28 @@ open System.Security.Cryptography
 open Microsoft.FSharp.Control 
 open System.Net
 open Paket
+open Paket.Domain
 
 type Name    = string
 type Version = string
 type Url     = string
 type Sha256  = string
 type Rev     = string
+
+type Project =
+  {  Type                     : string
+  ;  PackageName              : string
+  ;  Owners                   : string list
+  ;  Authors                  : string list
+  ;  Url                      : string option
+  ;  IconUrl                  : string option
+  ;  LicenseUrl               : string option
+  ;  RequireLicenseAcceptance : bool
+  ;  Copyright                : string option
+  ;  Tags                     : string list
+  ;  Summary                  : string option
+  ;  Description              : string option
+  }
 
 (* slightly nicer way of replacing strings *)
 let internal replace (from : string) (two : string) (target : string) =
@@ -83,7 +99,7 @@ stdenv.mkDerivation {
   phases = [ ""unpackPhase"" ];
 
   buildInputs = [ unzip ];
-
+
   unpackPhase = ''
     mkdir -p ""$out/lib/mono/packages/$pkgname-$version/$name"";
     unzip -x ""$src"" -d ""$out/lib/mono/packages/$pkgname-$version/$name"";
@@ -94,6 +110,7 @@ stdenv.mkDerivation {
   |> replace "$name"    name
   |> replace "$version" version
   |> replace "$method"  (meth.ToString())
+
 
 (*----------------------------------------------------------------------------*)
 type NixPkg =
@@ -106,9 +123,11 @@ type NixPkg =
    override self.ToString () =
       nixPkgTmpl self.name self.version self.meth
 
+
 (*----------------------------------------------------------------------------*)
 let parseLockFile path =
   LockFile.LoadFrom path
+
 
 (*----------------------------------------------------------------------------*)
 let fetchSha256 (url : string) : Async<string> = 
@@ -126,12 +145,13 @@ let fetchSha256 (url : string) : Async<string> =
     return sum
   }
 
+
 (*----------------------------------------------------------------------------*)
 let getUrl (pkgres : PackageResolver.ResolvedPackage) : string =
   let version = pkgres.Version.ToString()
   let name =
     match pkgres.Name with
-      | Domain.PackageName(_, l) -> l
+      | PackageName(_, l) -> l
   sprintf "https://api.nuget.org/packages/%s.%s.nupkg" name version
 
 
@@ -140,7 +160,7 @@ let pkgToNix (pkgres : PackageResolver.ResolvedPackage) : Async<NixPkg> =
   async {
     let name =
       match pkgres.Name with
-        | Domain.PackageName(u, _) -> u
+        | PackageName(u, _) -> u
 
     let version = pkgres.Version.ToString()
     let url = getUrl pkgres
@@ -155,20 +175,16 @@ let pkgToNix (pkgres : PackageResolver.ResolvedPackage) : Async<NixPkg> =
            ; deps    = List.empty }
   }
 
-(*----------------------------------------------------------------------------*)
-let getGroups path = 
-  parseLockFile path
-  |> (fun file -> Map.toList file.Groups) 
 
 (*----------------------------------------------------------------------------*)
 let parseGroup (group : LockFileGroup) : seq<Async<NixPkg>> =
   List.map (snd >> pkgToNix) (Map.toList group.Resolution)
   |> List.toSeq
 
+
 (*----------------------------------------------------------------------------*)
-let paket2Nix path =
-  getGroups path
-  |> List.toSeq
+let paket2Nix (lockFile : LockFile) =
+  Map.toSeq lockFile.Groups
   |> Seq.map (snd >> parseGroup)
   |> Seq.fold (fun m l -> Seq.append m l) Seq.empty
   |> Async.Parallel
@@ -186,6 +202,75 @@ let writeToDisk (dest : string) (pkgs : NixPkg array) : unit =
   |> Array.iter File.WriteAllText
   |> ignore
 
+
+let mkProject (n, o, a, u, i, l, r, c, ta, s, d) = 
+  {  Type                     = "exe"
+  ;  PackageName              = n
+  ;  Owners                   = o
+  ;  Authors                  = a
+  ;  Url                      = u
+  ;  IconUrl                  = i
+  ;  LicenseUrl               = l
+  ;  RequireLicenseAcceptance = r
+  ;  Copyright                = c
+  ;  Tags                     = ta
+  ;  Summary                  = s
+  ;  Description              = d
+  }
+
+(*----------------------------------------------------------------------------*)
+let readProject (lockFile : LockFile) (path : string) : Project =
+  let tmpl = TemplateFile.Load(path, lockFile, None)
+  match tmpl.Contents with
+    | CompleteInfo(core, optInfo) ->
+      ( core.PackageFileName
+      , optInfo.Owners
+      , core.Authors
+      , optInfo.ProjectUrl
+      , optInfo.IconUrl
+      , optInfo.LicenseUrl
+      , optInfo.RequireLicenseAcceptance
+      , optInfo.Copyright
+      , optInfo.Tags
+      , optInfo.Summary
+      , Some(core.Description)
+      )
+    | ProjectInfo(core, optInfo) ->
+      ( defaultArg optInfo.Title "<empty>"
+      , optInfo.Owners
+      , defaultArg core.Authors List.empty
+      , optInfo.ProjectUrl
+      , optInfo.IconUrl
+      , optInfo.LicenseUrl
+      , optInfo.RequireLicenseAcceptance
+      , optInfo.Copyright
+      , optInfo.Tags
+      , optInfo.Summary
+      , core.Description
+      )
+  |> mkProject 
+
+(*----------------------------------------------------------------------------*)
+let rec listFiles root : string array =
+  let files = Directory.GetFiles(root)
+  Directory.GetDirectories(root)
+  |> Array.fold (fun m dir -> Array.append m (listFiles dir)) files
+
+
+(*----------------------------------------------------------------------------*)
+let isProject (str : string) =
+  str.Contains ".fsproj" ||
+  str.Contains ".csproj" ||
+  str.Contains ".vbproj"
+
+
+(*----------------------------------------------------------------------------*)
+let findProjects (lockFile : LockFile) (root : string) : Project array =
+  listFiles root
+  |> Array.filter isProject
+  |> Array.map (readProject lockFile)
+
+
 (*----------------------------------------------------------------------------*)
 let internal body = @"
 with import <nixpkgs> {};
@@ -193,6 +278,7 @@ with import <nixpkgs> {};
   $deps
 }"
 
+(*----------------------------------------------------------------------------*)
 let createTopLevel (dest : string) (pkgs : NixPkg array) : unit =
   let sanitize (str : string) : string = str.Replace(".","")
   let line pkg = sprintf "%s = callPackage ./%s {};" (sanitize pkg.name) pkg.name

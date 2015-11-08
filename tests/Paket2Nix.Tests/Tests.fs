@@ -2,7 +2,7 @@ module Paket2Nix.Tests
 
 open Paket2Nix.Core
 open NUnit.Framework
-
+open Paket
 open System.IO
 
 let lf1 =
@@ -41,8 +41,10 @@ let ``nuget dependency should serialize correctly`` () =
   tmpFile.Write (System.Text.Encoding.ASCII.GetBytes(lf1), 0, 0)
   tmpFile.Close ()
 
+  let lockFile = parseLockFile path
+
   let deps =
-    paket2Nix path
+    paket2Nix lockFile
     |> Async.RunSynchronously
 
   Assert.AreEqual(nf1,(Array.head deps).ToString())
@@ -60,6 +62,7 @@ let ``github dependency should serialize correctly`` () =
   tmpFile.Write (System.Text.Encoding.ASCII.GetBytes(lf1), 0, 0)
   tmpFile.Close ()
 
-  let nix = paket2Nix path
+  let lockFile = parseLockFile path
+  let nix = paket2Nix lockFile
 
   Assert.AreEqual(42,42)
