@@ -87,9 +87,9 @@ type Method =
         | Github(u, s, r) -> gitTmpl u s r
 
 (*----------------------------------------------------------------------------*)
-let internal nixPkgTmpl (name : Name) (version : Version) (meth : Method) =
+let internal nixPkgTmpl (name : Name) (version : Version) (meth : Method) (deps : string list) =
   @"
-{ stdenv, fetchgit, fetchurl, unzip }:
+{ stdenv, fetchgit, fetchurl, unzip $args }:
 
 stdenv.mkDerivation {
   name = ""$pkgname-$version"";
@@ -98,14 +98,16 @@ stdenv.mkDerivation {
 
   phases = [ ""unpackPhase"" ];
 
-  buildInputs = [ unzip ];
-
+  buildInputs = [ unzip $inputs ];
+
   unpackPhase = ''
     mkdir -p ""$out/lib/mono/packages/$pkgname-$version/$name"";
     unzip -x ""$src"" -d ""$out/lib/mono/packages/$pkgname-$version/$name"";
   '';
 }
 "
+  |> replace "$args"    (List.fold (fun m i -> m + ", " + i) "" deps)
+  |> replace "$inputs"  (List.fold (fun m i -> m + " " + i)  "" deps)
   |> replace "$pkgname" (name.ToLower())
   |> replace "$name"    name
   |> replace "$version" version
@@ -121,7 +123,7 @@ type NixPkg =
   }
   with
    override self.ToString () =
-      nixPkgTmpl self.name self.version self.meth
+      nixPkgTmpl self.name self.version self.meth (List.map (fun pkg -> pkg.name) self.deps)
 
 
 (*----------------------------------------------------------------------------*)
@@ -203,6 +205,7 @@ let writeToDisk (dest : string) (pkgs : NixPkg array) : unit =
   |> ignore
 
 
+(*----------------------------------------------------------------------------*)
 let mkProject (n, o, a, u, i, l, r, c, ta, s, d) = 
   {  Type                     = "exe"
   ;  PackageName              = n
