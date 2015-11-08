@@ -176,9 +176,6 @@ let paket2Nix path =
 
 (*----------------------------------------------------------------------------*)
 let writeToDisk (dest : string) (pkgs : NixPkg array) : unit =
-  // if not <| Directory.Exists dest
-  // then Directory.CreateDirectory dest |> ignore
-
   pkgs
   |> Array.map
     (fun p ->
