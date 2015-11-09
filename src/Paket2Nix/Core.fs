@@ -154,13 +154,13 @@ type NixPkg =
       |> List.map
         (fun pkg -> 
           storePath (sanitize pkg.Name) (pkg.Name.ToLower()) pkg.Version
-          |> sprintf @"ln -s ""%s/*"" ""$src/packages/""")
+          |> sprintf @"    ln -s ""%s/*"" ""$src/packages/""")
       |> List.fold (fun m cmd -> m + cmd + "\n") ""
             
     member self.ExeCmd () =
       match self.Type with
         | ProjectOutputType.Exe ->
-          sprintf "#!/bin/sh\n ${mono}/bin/mono %s/%s" (self.StorePath()) self.AssemblyName
+          sprintf "#!/bin/sh\n ${mono}/bin/mono %s/%s/%s" (self.StorePath()) self.Name self.AssemblyName
         | _ -> ""
 
     member self.DepNames () =
@@ -186,7 +186,7 @@ stdenv.mkDerivation {
   buildInputs = [ mono unzip $inputs ];
 
   patchPhase = ''
-    $linkcmds
+$linkcmds
   '';
 
   buildPhase = ''
@@ -200,7 +200,8 @@ stdenv.mkDerivation {
   '';
 }"
      |> spliceFields
-         [ ("$pkgname",      self.Name)
+         [ ("$name",         self.Name)
+         ; ("$pkgname",      self.Name.ToLower())
          ; ("$version",      self.Version.ToString())
          ; ("$homepage",     self.GetUrl())
          ; ("$description",  defaultArg self.Description "<empty>")
