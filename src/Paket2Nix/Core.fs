@@ -161,8 +161,8 @@ type NixPkg =
       self.Dependencies
       |> List.map
         (fun pkg -> 
-          storePath (sanitize pkg.Name) (pkg.Name.ToLower()) pkg.Version
-          |> sprintf @"    ln -s ""%s/*"" ""$src/packages/""")
+          let s = storePath (sanitize pkg.Name) (pkg.Name.ToLower()) pkg.Version
+          sprintf @"    ln -s ""%s/%s"" ""packages/%s""" s pkg.Name pkg.Name)
       |> List.fold (fun m cmd -> m + cmd + "\n") ""
             
     member self.ExeCmd () =
@@ -171,12 +171,15 @@ type NixPkg =
           sprintf "#!/bin/sh\n ${mono}/bin/mono %s/%s/%s" (self.StorePath()) self.Name self.AssemblyName
         | _ -> ""
 
+    member self.Names () =
+      List.map (fun (p : NixPkgDep)-> p.Name) self.Dependencies
+
     member self.DepNames () =
-      List.map (fun (p : NixPkgDep)-> sanitize p.Name) self.Dependencies
+      List.map (fun p -> sanitize p) <| self.Names()
    
     override self.ToString () =
       @"
-{ stdenv, fetchgit, fetchurl, mono, unzip $dependencies }:
+{ stdenv, fetchgit, fetchurl, mono $dependencies }:
 
 stdenv.mkDerivation {
   name = ""$pkgname-$version"";
@@ -189,21 +192,22 @@ stdenv.mkDerivation {
     maintainers = [ $maintainers ];
   };
 
-  phases = [ ""patchPhase"" ""buildPhase"" ""installPhase"" ];
+  phases = [ ""unpackPhase"" ""patchPhase"" ""buildPhase"" ""installPhase"" ];
 
-  buildInputs = [ mono unzip $inputs ];
+  buildInputs = [ mono $inputs ];
 
   patchPhase = ''
+    mkdir -p packages
 $linkcmds
   '';
 
   buildPhase = ''
-    ./build.sh
+    mono packages/FAKE/tools/FAKE.exe build.fsx
   '';
 
   installPhase = ''
     mkdir -p ""$out/lib/mono/packages/$pkgname-$version"";
-    cp -rv ./bin/* ""$out/lib/mono/packages/$pkgname-$version/$name""
+    cp -rv ./bin/$name ""$out/lib/mono/packages/$pkgname-$version/$name""
     $exe
   '';
 }"
@@ -218,7 +222,7 @@ $linkcmds
          ; ("$inputs",       collapse " "  <| self.DepNames())
          ; ("$method",       self.Method.ToString())
          ; ("$linkcmds",     self.LinkCmds())
-         ; ("$exe",          self.ExeCmd())
+         ; ("$exe",          "")
          ]
 
 
@@ -395,7 +399,7 @@ let listProjects (root : string) (pkgs : NixPkgDep array) : Async<NixPkg> seq =
 
   (deps.ListTemplateFiles(), ProjectFile.FindAllProjects(root))
   |> (fun (tmpls, projs) ->
-      List.map (fun tmpl -> (tmpl, findProject tmpl projs, getDeps tmpl deps pkgs)) tmpls)
+      List.map (fun tmpl -> (tmpl, findProject tmpl projs, Array.toList pkgs)) tmpls)
   |> List.map readProject
   |> List.toSeq
 
@@ -404,22 +408,22 @@ let listProjects (root : string) (pkgs : NixPkgDep array) : Async<NixPkg> seq =
 let internal body = @"
 with import <nixpkgs> {};
 {
-  $deps
+$deps
 }"
 
 
 (*----------------------------------------------------------------------------*)
 let private callPackage (san, norm, args) =
-  sprintf "%s = callPackage ./%s %s;" san norm args
+  sprintf "  %s = callPackage ./%s %s;" san norm args
 
 let private mkDeps (deps : string list) : string =
-  sprintf "{ %s }" <| List.fold (fun m n -> m + " " + n) "" deps
+  sprintf "{\n %s\n}" <| List.fold (fun m n -> m + "\n  " + (callPackage (sanitize n, n, "{}"))) "" deps
 
 (*----------------------------------------------------------------------------*)
 let createTopLevel (dest : string) (projs : NixPkg array) (deps : NixPkgDep array) : unit =
   let namePairs =
     Array.append <| Array.map (fun (p : NixPkgDep) -> (sanitize p.Name, p.Name, "{}")) deps
-                 <| Array.map (fun (p : NixPkg)    -> (sanitize p.Name, p.Name, mkDeps (p.DepNames()))) projs
+                 <| Array.map (fun (p : NixPkg)    -> (sanitize p.Name, p.Name, mkDeps (p.Names()))) projs
   let topLevel =
     Array.map callPackage namePairs
     |> Array.toSeq
@@ -427,3 +431,4 @@ let createTopLevel (dest : string) (projs : NixPkg array) (deps : NixPkgDep arra
     |> (fun it -> body.Replace("$deps", it))
 
   File.WriteAllText(Path.Combine(dest, "top.nix"), topLevel)
+  
