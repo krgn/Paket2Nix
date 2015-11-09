@@ -176,9 +176,9 @@ stdenv.mkDerivation {
   src = $method;
 
   meta = {
-    homepage = $homepage;
-    description = $description;
-    maintainers = [ $maintainer ];
+    homepage = ""$homepage"";
+    description = ""$description"";
+    maintainers = [ $maintainers ];
   };
 
   phases = [ ""patchPhase"" ""buildPhase"" ""installPhase"" ];
