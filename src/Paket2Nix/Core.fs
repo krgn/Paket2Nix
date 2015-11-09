@@ -278,16 +278,19 @@ let parseGroup (group : LockFileGroup) : Async<NixPkgDep> seq =
 
 
 (*----------------------------------------------------------------------------*)
-let paket2Nix (lockFile : LockFile) : Async<NixPkgDep []> =
-  Map.toSeq lockFile.Groups
+let deps2Nix (root : String) : Async<NixPkgDep []> =
+  Path.Combine(root, Constants.LockFileName)
+  |> parseLockFile
+  |> (fun lockFile -> Map.toSeq lockFile.Groups)
   |> Seq.map (snd >> parseGroup)
   |> Seq.fold (fun m l -> Seq.append m l) Seq.empty
   |> Async.Parallel
 
 
 (*----------------------------------------------------------------------------*)
-let writeToDisk (dest : string) (pkgs : NixPkg array) : unit =
-  pkgs
+let writeFiles (dest : string) (projs : NixPkg array) (deps : NixPkgDep array) : unit =
+  printfn "Writing out dependencies"
+  deps
   |> Array.map
     (fun p ->
      let target = Path.Combine(dest, p.Name)
@@ -297,11 +300,24 @@ let writeToDisk (dest : string) (pkgs : NixPkg array) : unit =
   |> Array.iter File.WriteAllText
   |> ignore
 
+  printfn "... and projects ..."
+  projs
+  |> Array.map
+    (fun p ->
+     let target = Path.Combine(dest, p.Name)
+     if not <| Directory.Exists target
+     then Directory.CreateDirectory target |> ignore
+     (Path.Combine(target, "default.nix"), p.ToString()))
+  |> Array.iter File.WriteAllText
+  |> ignore
+
+  printfn "done!"
+
 
 (*----------------------------------------------------------------------------*)
 let mkNixPkg (t, n : string, an : string, v, a, (u : string), d, ds) : Async<NixPkg> = 
   async {
-    let url = if u.Contains("github") then u + "/archive/master.tag.gz" else u
+    let url = if u.Contains("github") then u + "/archive/master.tar.gz" else u
     let! res = Async.Catch(fetchSha256 url)
 
     let meth =
@@ -384,15 +400,18 @@ with import <nixpkgs> {};
 
 
 (*----------------------------------------------------------------------------*)
-let private callPackage pkg =
-  sprintf "%s = callPackage ./%s {};" (sanitize pkg.Name) pkg.Name
+let private callPackage (san, norm) =
+  sprintf "%s = callPackage ./%s {};" san norm
 
 
 (*----------------------------------------------------------------------------*)
-let createTopLevel (dest : string) (pkgs : NixPkg array) : unit =
-
+let createTopLevel (dest : string) (projs : NixPkg array) (deps : NixPkgDep array) : unit =
+  let namePairs =
+    Array.append <| Array.map (fun (p : NixPkg)    -> (sanitize p.Name, p.Name)) projs
+                 <| Array.map (fun (p : NixPkgDep) -> (sanitize p.Name, p.Name)) deps
+                 
   let topLevel =
-    Array.map callPackage (pkgs)
+    Array.map callPackage namePairs
     |> Array.toSeq
     |> String.concat "\n"
     |> (fun it -> body.Replace("$deps", it))

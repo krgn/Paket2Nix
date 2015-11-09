@@ -44,7 +44,7 @@ let ``nuget dependency should serialize correctly`` () =
   let lockFile = parseLockFile path
 
   let deps =
-    paket2Nix lockFile
+    deps2Nix "."
     |> Async.RunSynchronously
 
   Assert.AreEqual(nf1,(Array.head deps).ToString())
@@ -63,6 +63,6 @@ let ``github dependency should serialize correctly`` () =
   tmpFile.Close ()
 
   let lockFile = parseLockFile path
-  let nix = paket2Nix lockFile
+  let nix = deps2Nix "."
 
   Assert.AreEqual(42,42)

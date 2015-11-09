@@ -18,33 +18,27 @@
 module Paket2Nix.Main
 
 open System.IO
+open Paket
 open Paket2Nix.Core
 
 [<EntryPoint>]
 let main _ =
+  let root = "."
+  let destination = Path.Combine(root, "nix")
 
-  if not <| File.Exists "./paket.lock"
-  then failwith "paket.lock file not found! Are you in the project root?"
-
-  let lockFile = parseLockFile "./paket.lock"
+  if not <| File.Exists (Path.Combine(root, Constants.LockFileName))
+  then failwith "paket.lock file not found! Please run from project root."
 
   let packages = 
-    paket2Nix lockFile
+    deps2Nix root
     |> Async.RunSynchronously
 
   let projects = 
-    listProjects "." packages
+    listProjects root packages
     |> Async.Parallel
     |> Async.RunSynchronously
 
-  Array.iter (fun p -> printfn "%s" <| p.ToString()) projects 
-  
-  (*
-  let dest = "./nix"
+  writeFiles destination projects packages
+  createTopLevel destination projects packages
 
-  packages
-  |> (fun pkgs -> writeToDisk dest pkgs; pkgs)
-  |> createTopLevel dest
-  
-  *)
   0
