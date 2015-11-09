@@ -124,8 +124,16 @@ type NixPkgDep =
 let private collapse (sep : string)  =
   List.fold (fun m p -> m + sep + p) ""
 
+
+(*----------------------------------------------------------------------------*)
+let private quoted =
+  List.fold (fun m p -> m + (sprintf @" ""%s""" p)) ""
+
+
+(*----------------------------------------------------------------------------*)
 let private storePath =
   sprintf @"${%s}/lib/mono/packages/%s-%s"
+
    
 (*----------------------------------------------------------------------------*)
 type NixPkg =
@@ -204,6 +212,7 @@ $linkcmds
          ; ("$pkgname",      self.Name.ToLower())
          ; ("$version",      self.Version.ToString())
          ; ("$homepage",     self.GetUrl())
+         ; ("$maintainers",  quoted self.Authors)
          ; ("$description",  defaultArg self.Description "<empty>")
          ; ("$dependencies", collapse ", " <| self.DepNames())
          ; ("$inputs",       collapse " "  <| self.DepNames())
