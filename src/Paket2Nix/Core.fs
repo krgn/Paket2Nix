@@ -139,6 +139,11 @@ type NixPkg =
   ; Dependencies : NixPkgDep list
   }
   with
+    member self.GetUrl ()  =
+      match self.Method with
+        | Nuget(url, _) -> url
+        | Github(url, _, _) -> url
+
     member self.StorePath () =
       storePath <| sanitize self.Name
                 <| self.Name.ToLower()
@@ -197,6 +202,7 @@ stdenv.mkDerivation {
      |> spliceFields
          [ ("$pkgname",      self.Name)
          ; ("$version",      self.Version.ToString())
+         ; ("$homepage",     self.GetUrl())
          ; ("$dependencies", collapse ", " <| self.depNames())
          ; ("$inputs",       collapse " "  <| self.depNames())
          ; ("$method",       self.Method.ToString())
@@ -228,7 +234,7 @@ let fetchSha256 (url : string) : Async<string> =
 
 
 (*----------------------------------------------------------------------------*)
-let getUrl (pkgres : PackageResolver.ResolvedPackage) : string =
+let downloadUrl (pkgres : PackageResolver.ResolvedPackage) : string =
   let version = pkgres.Version.ToString()
   let name =
     match pkgres.Name with
@@ -244,7 +250,7 @@ let pkgToNix (pkgres : PackageResolver.ResolvedPackage) : Async<NixPkgDep> =
         | PackageName(u, _) -> u
 
     let version = pkgres.Version.ToString()
-    let url = getUrl pkgres
+    let url = downloadUrl pkgres
 
     printfn "%s: building checksum" url
 
