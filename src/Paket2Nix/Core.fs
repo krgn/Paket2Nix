@@ -237,7 +237,7 @@ let getUrl (pkgres : PackageResolver.ResolvedPackage) : string =
 
 
 (*----------------------------------------------------------------------------*)
-let pkgToNix (pkgres : PackageResolver.ResolvedPackage) : Async<NixPkg> =
+let pkgToNix (pkgres : PackageResolver.ResolvedPackage) : Async<NixPkgDep> =
   async {
     let name =
       match pkgres.Name with
@@ -250,25 +250,20 @@ let pkgToNix (pkgres : PackageResolver.ResolvedPackage) : Async<NixPkg> =
 
     let! sha = fetchSha256 url
 
-    return { Type         = ProjectOutputType.Library
-           ; Name         = name
-           ; AssemblyName = name
-           ; Authors      = List.empty
-           ; Version      = SemVer.Parse(version)
-           ; Method       = Nuget(url, sha)
-           ; Description  = None
-           ; Dependencies = List.empty }
+    return { Name    = name
+           ; Version = version
+           ; Method  = Nuget(url, sha) }
   }
 
 
 (*----------------------------------------------------------------------------*)
-let parseGroup (group : LockFileGroup) : seq<Async<NixPkg>> =
+let parseGroup (group : LockFileGroup) : Async<NixPkgDep> seq =
   List.map (snd >> pkgToNix) (Map.toList group.Resolution)
   |> List.toSeq
 
 
 (*----------------------------------------------------------------------------*)
-let paket2Nix (lockFile : LockFile) =
+let paket2Nix (lockFile : LockFile) : Async<NixPkgDep []> =
   Map.toSeq lockFile.Groups
   |> Seq.map (snd >> parseGroup)
   |> Seq.fold (fun m l -> Seq.append m l) Seq.empty
@@ -305,12 +300,12 @@ let mkNixPkg (t, n : string, an : string, v, a, u, d, ds) : Async<NixPkg> =
            ; Method       = meth
            ; Authors      = a
            ; Description  = d
-           ; Dependencies = List.empty // ds! neeed to convert (s*s) pairs to NixPkgDeps (ds)
+           ; Dependencies = ds
            }
     }
 
 (*----------------------------------------------------------------------------*)
-let readProject (tmpl : TemplateFile, project : ProjectFile, deps : (string * string) list) : Async<NixPkg> =
+let readProject (tmpl : TemplateFile, project : ProjectFile, deps : NixPkgDep list) : Async<NixPkg> =
   let defVersion = SemVer.Parse("0.0.1")
 
   match tmpl.Contents with
@@ -344,23 +339,24 @@ let findProject (tmpl : TemplateFile) (projects : ProjectFile array) : ProjectFi
 
 
 (*----------------------------------------------------------------------------*)
-let getDeps (tmpl : TemplateFile) (deps : Dependencies) : (string * string) list = 
+let getDeps (tmpl : TemplateFile) (deps : Dependencies) (pkgs : NixPkgDep array) : NixPkgDep list = 
   let path = Path.Combine(Path.GetDirectoryName(tmpl.FileName), Constants.ReferencesFile)
   if File.Exists path
   then
     deps.GetDirectDependencies(ReferencesFile.FromFile(path))
-    |> List.map(fun (_, n, v) -> (n, v))
+    |> List.map(fun (_, n, _) -> Array.find (fun pkg -> pkg.Name = n) pkgs)
   else List.empty
 
 
 (*----------------------------------------------------------------------------*)
-let listProjects (root : string) : Async<NixPkg> list =
+let listProjects (root : string) (pkgs : NixPkgDep array) : Async<NixPkg> seq =
   let deps = new Dependencies(Path.Combine(root, Constants.DependenciesFileName))
 
   (deps.ListTemplateFiles(), ProjectFile.FindAllProjects(root))
   |> (fun (tmpls, projs) ->
-      List.map (fun tmpl -> (tmpl, findProject tmpl projs, getDeps tmpl deps)) tmpls)
+      List.map (fun tmpl -> (tmpl, findProject tmpl projs, getDeps tmpl deps pkgs)) tmpls)
   |> List.map readProject
+  |> List.toSeq
 
 
 (*----------------------------------------------------------------------------*)

@@ -22,19 +22,24 @@ open Paket2Nix.Core
 
 [<EntryPoint>]
 let main _ =
+
   if not <| File.Exists "./paket.lock"
   then failwith "paket.lock file not found! Are you in the project root?"
 
-  listProjects "."
-  |> List.iter (fun p -> printfn "%s" (p.ToString()))
-
-  (*
   let lockFile = parseLockFile "./paket.lock"
 
   let packages = 
     paket2Nix lockFile
     |> Async.RunSynchronously
 
+  let projects = 
+    listProjects "." packages
+    |> Async.Parallel
+    |> Async.RunSynchronously
+
+  Array.iter (fun p -> printfn "%s" <| p.ToString()) projects 
+  
+  (*
   let dest = "./nix"
 
   packages
