@@ -163,8 +163,8 @@ type NixPkg =
           sprintf "#!/bin/sh\n ${mono}/bin/mono %s/%s" (self.StorePath()) self.AssemblyName
         | _ -> ""
 
-    member self.depNames () =
-      List.map (fun (p : NixPkgDep)-> p.Name) self.Dependencies
+    member self.DepNames () =
+      List.map (fun (p : NixPkgDep)-> sanitize p.Name) self.Dependencies
    
     override self.ToString () =
       @"
@@ -204,8 +204,8 @@ stdenv.mkDerivation {
          ; ("$version",      self.Version.ToString())
          ; ("$homepage",     self.GetUrl())
          ; ("$description",  defaultArg self.Description "<empty>")
-         ; ("$dependencies", collapse ", " <| self.depNames())
-         ; ("$inputs",       collapse " "  <| self.depNames())
+         ; ("$dependencies", collapse ", " <| self.DepNames())
+         ; ("$inputs",       collapse " "  <| self.DepNames())
          ; ("$method",       self.Method.ToString())
          ; ("$linkcmds",     self.LinkCmds())
          ; ("$exe",          self.ExeCmd())
