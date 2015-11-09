@@ -203,6 +203,7 @@ stdenv.mkDerivation {
          [ ("$pkgname",      self.Name)
          ; ("$version",      self.Version.ToString())
          ; ("$homepage",     self.GetUrl())
+         ; ("$description",  defaultArg self.Description "<empty>")
          ; ("$dependencies", collapse ", " <| self.depNames())
          ; ("$inputs",       collapse " "  <| self.depNames())
          ; ("$method",       self.Method.ToString())
