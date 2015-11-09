@@ -325,7 +325,7 @@ let readProject (tmpl : TemplateFile, project : ProjectFile, deps : NixPkgDep li
   match tmpl.Contents with
     | CompleteInfo(core, optInfo) ->
       ( project.OutputType
-      , project.Name
+      , project.NameWithoutExtension
       , project.GetAssemblyName()
       , defaultArg core.Version defVersion
       , core.Authors
@@ -335,7 +335,7 @@ let readProject (tmpl : TemplateFile, project : ProjectFile, deps : NixPkgDep li
       )
     | ProjectInfo(core, optInfo) ->
       ( project.OutputType
-      , project.Name
+      , project.NameWithoutExtension
       , project.GetAssemblyName()
       , defaultArg core.Version defVersion
       , defaultArg core.Authors List.empty
