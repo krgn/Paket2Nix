@@ -299,14 +299,15 @@ let writeToDisk (dest : string) (pkgs : NixPkg array) : unit =
 
 
 (*----------------------------------------------------------------------------*)
-let mkNixPkg (t, n : string, an : string, v, a, u, d, ds) : Async<NixPkg> = 
+let mkNixPkg (t, n : string, an : string, v, a, (u : string), d, ds) : Async<NixPkg> = 
   async {
-    let! res = Async.Catch(fetchSha256 u)
+    let url = if u.Contains("github") then u + "/archive/master.tag.gz" else u
+    let! res = Async.Catch(fetchSha256 url)
 
     let meth =
       match res with
-       | Choice1Of2 sha -> Nuget(u, sha)
-       | Choice2Of2 _ -> Nuget(u, "<empty>")
+       | Choice1Of2 sha -> Nuget(url, sha)
+       | Choice2Of2 _   -> Nuget(url, "<empty>")
 
     return { Type         = t
            ; Name         = n
