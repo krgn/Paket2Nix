@@ -246,9 +246,16 @@ let pkgToNix (pkgres : PackageResolver.ResolvedPackage) : Async<NixPkgDep> =
     let version = pkgres.Version.ToString()
     let url = getUrl pkgres
 
-    printfn "downloading resource: %s" url
+    printfn "%s: building checksum" url
 
-    let! sha = fetchSha256 url
+    let! result = Async.Catch(fetchSha256 url) 
+
+    let sha =
+      match result with
+        | Choice1Of2 sha -> sha
+        | Choice2Of2 exn -> exn.Message
+
+    printfn "%s: %s" url sha
 
     return { Name    = name
            ; Version = version
