@@ -400,16 +400,17 @@ with import <nixpkgs> {};
 
 
 (*----------------------------------------------------------------------------*)
-let private callPackage (san, norm) =
-  sprintf "%s = callPackage ./%s {};" san norm
+let private callPackage (san, norm, args) =
+  sprintf "%s = callPackage ./%s %s;" san norm args
 
+let private mkDeps (deps : string list) : string =
+  sprintf "{ %s }" <| List.fold (fun m n -> m + " " + n) "" deps
 
 (*----------------------------------------------------------------------------*)
 let createTopLevel (dest : string) (projs : NixPkg array) (deps : NixPkgDep array) : unit =
   let namePairs =
-    Array.append <| Array.map (fun (p : NixPkg)    -> (sanitize p.Name, p.Name)) projs
-                 <| Array.map (fun (p : NixPkgDep) -> (sanitize p.Name, p.Name)) deps
-                 
+    Array.append <| Array.map (fun (p : NixPkgDep) -> (sanitize p.Name, p.Name, "{}")) deps
+                 <| Array.map (fun (p : NixPkg)    -> (sanitize p.Name, p.Name, mkDeps (p.DepNames()))) projs
   let topLevel =
     Array.map callPackage namePairs
     |> Array.toSeq
