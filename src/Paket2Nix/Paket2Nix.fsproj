@@ -38,8 +38,6 @@
     <Reference Include="System.Numerics" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Globbing.fs" />
-    <Compile Include="TemplateFile.fs" />
     <Compile Include="Core.fs" />
     <Compile Include="Program.fs" />
     <None Include="Script.fsx" />

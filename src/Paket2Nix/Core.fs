@@ -221,9 +221,9 @@ let mkProject (n, o, a, u, i, l, r, c, ta, s, d) =
   ;  Description              = d
   }
 
+
 (*----------------------------------------------------------------------------*)
-let readProject (lockFile : LockFile) (path : string) : Project =
-  let tmpl = TemplateFile.Load(path, lockFile, None)
+let readProject (tmpl : TemplateFile) : Project =
   match tmpl.Contents with
     | CompleteInfo(core, optInfo) ->
       ( core.PackageFileName
@@ -253,25 +253,12 @@ let readProject (lockFile : LockFile) (path : string) : Project =
       )
   |> mkProject 
 
-(*----------------------------------------------------------------------------*)
-let rec listFiles root : string array =
-  let files = Directory.GetFiles(root)
-  Directory.GetDirectories(root)
-  |> Array.fold (fun m dir -> Array.append m (listFiles dir)) files
-
 
 (*----------------------------------------------------------------------------*)
-let isProject (str : string) =
-  str.Contains ".fsproj" ||
-  str.Contains ".csproj" ||
-  str.Contains ".vbproj"
-
-
-(*----------------------------------------------------------------------------*)
-let findProjects (lockFile : LockFile) (root : string) : Project array =
-  listFiles root
-  |> Array.filter isProject
-  |> Array.map (readProject lockFile)
+let findProjects (root : string) : Project list =
+  let deps = new Dependencies(Path.Combine(root, Constants.DependenciesFileName))
+  deps.ListTemplateFiles()
+  |> List.map readProject
 
 
 (*----------------------------------------------------------------------------*)
