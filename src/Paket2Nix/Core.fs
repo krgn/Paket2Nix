@@ -31,9 +31,15 @@ type Url     = string
 type Sha256  = string
 type Rev     = string
 
+let serializeType (t : ProjectOutputType) : string =
+  match t with
+    | ProjectOutputType.Exe -> "exe"
+    | ProjectOutputType.Library -> "library"
+
 type Project =
-  {  Type                     : string
-  ;  PackageName              : string
+  {  Type                     : ProjectOutputType
+  ;  Name                     : string
+  ;  AssemblyName             : string
   ;  Owners                   : string list
   ;  Authors                  : string list
   ;  Url                      : string option
@@ -44,7 +50,43 @@ type Project =
   ;  Tags                     : string list
   ;  Summary                  : string option
   ;  Description              : string option
+  ;  Dependencies             : (string * string * string) list
   }
+  with
+    override self.ToString () =
+      sprintf @"
+      --------------------------
+      Type                     = %s
+      Name                     = %s
+      AssemblyName             = %s
+      Owners                   = %s
+      Authors                  = %s
+      Url                      = %s
+      IconUrl                  = %s
+      LicenseUrl               = %s
+      RequireLicenseAcceptance = %s
+      Copyright                = %s
+      Tags                     = %s
+      Summary                  = %s
+      Description              = %s
+      Dependencies             = %s
+      --------------------------
+      "
+        <| serializeType self.Type
+        <| self.Name
+        <| self.AssemblyName
+        <| self.Owners.ToString()
+        <| self.Authors.ToString()
+        <| self.Url.ToString()
+        <| self.IconUrl.ToString()
+        <| self.LicenseUrl.ToString()
+        <| self.RequireLicenseAcceptance.ToString()
+        <| self.Copyright.ToString()
+        <| self.Tags.ToString()
+        <| self.Summary.ToString()
+        <| self.Description.ToString()
+        <| self.Dependencies.ToString()
+   
 
 (* slightly nicer way of replacing strings *)
 let internal replace (from : string) (two : string) (target : string) =
@@ -123,7 +165,10 @@ type NixPkg =
   }
   with
    override self.ToString () =
-      nixPkgTmpl self.name self.version self.meth (List.map (fun pkg -> pkg.name) self.deps)
+      nixPkgTmpl self.name
+                 self.version
+                 self.meth
+                 (List.map (fun pkg -> pkg.name) self.deps)
 
 
 (*----------------------------------------------------------------------------*)
@@ -206,9 +251,10 @@ let writeToDisk (dest : string) (pkgs : NixPkg array) : unit =
 
 
 (*----------------------------------------------------------------------------*)
-let mkProject (n, o, a, u, i, l, r, c, ta, s, d) = 
-  {  Type                     = "exe"
-  ;  PackageName              = n
+let mkProject (t, n, an, o, a, u, i, l, r, c, ta, s, d, ds) = 
+  {  Type                     = t
+  ;  Name                     = n
+  ;  AssemblyName             = an
   ;  Owners                   = o
   ;  Authors                  = a
   ;  Url                      = u
@@ -219,14 +265,17 @@ let mkProject (n, o, a, u, i, l, r, c, ta, s, d) =
   ;  Tags                     = ta
   ;  Summary                  = s
   ;  Description              = d
+  ;  Dependencies             = ds
   }
 
 
 (*----------------------------------------------------------------------------*)
-let readProject (tmpl : TemplateFile) : Project =
+let readProject (tmpl : TemplateFile, project : ProjectFile, deps : (string * string * string) list) : Project =
   match tmpl.Contents with
     | CompleteInfo(core, optInfo) ->
-      ( core.PackageFileName
+      ( project.OutputType
+      , project.Name
+      , project.GetAssemblyName()
       , optInfo.Owners
       , core.Authors
       , optInfo.ProjectUrl
@@ -237,9 +286,12 @@ let readProject (tmpl : TemplateFile) : Project =
       , optInfo.Tags
       , optInfo.Summary
       , Some(core.Description)
+      , deps
       )
     | ProjectInfo(core, optInfo) ->
-      ( defaultArg optInfo.Title "<empty>"
+      ( project.OutputType
+      , project.Name
+      , project.GetAssemblyName()
       , optInfo.Owners
       , defaultArg core.Authors List.empty
       , optInfo.ProjectUrl
@@ -250,16 +302,48 @@ let readProject (tmpl : TemplateFile) : Project =
       , optInfo.Tags
       , optInfo.Summary
       , core.Description
+      , deps
       )
   |> mkProject 
 
 
 (*----------------------------------------------------------------------------*)
-let findProjects (root : string) : Project list =
+let findProject (tmpl : TemplateFile) (projects : ProjectFile array) : ProjectFile =
+  let basePath = Path.GetDirectoryName(tmpl.FileName)
+  Array.find (fun p -> Path.GetDirectoryName(p.FileName) = basePath) projects
+
+let getDeps (tmpl : TemplateFile) (deps : Dependencies) : (string * string * string) list = 
+  let path = Path.Combine(Path.GetDirectoryName(tmpl.FileName), Constants.ReferencesFile)
+  if File.Exists path
+  then deps.GetDirectDependencies(ReferencesFile.FromFile(path))
+  else List.empty
+
+(*----------------------------------------------------------------------------*)
+let listProjects (root : string) : Project list =
   let deps = new Dependencies(Path.Combine(root, Constants.DependenciesFileName))
-  deps.ListTemplateFiles()
+
+  (deps.ListTemplateFiles(), ProjectFile.FindAllProjects(root))
+  |> (fun (tmpls, projs) ->
+      List.map (fun tmpl -> (tmpl, findProject tmpl projs, getDeps tmpl deps)) tmpls)
   |> List.map readProject
 
+
+// let project2Nix (project : Project) : NixPkg =
+//   {  Type                     : ProjectOutputType
+//   ;  Name                     : string
+//   ;  AssemblyName             : string
+//   ;  Owners                   : string list
+//   ;  Authors                  : string list
+//   ;  Url                      : string option
+//   ;  IconUrl                  : string option
+//   ;  LicenseUrl               : string option
+//   ;  RequireLicenseAcceptance : bool
+//   ;  Copyright                : string option
+//   ;  Tags                     : string list
+//   ;  Summary                  : string option
+//   ;  Description              : string option
+//   ;  Dependencies             : (string * string * string) list
+//   }
 
 (*----------------------------------------------------------------------------*)
 let internal body = @"
@@ -268,13 +352,24 @@ with import <nixpkgs> {};
   $deps
 }"
 
+
+(*----------------------------------------------------------------------------*)
+let private sanitize (str : string) : string = str.Replace(".","")
+
+
+(*----------------------------------------------------------------------------*)
+let private callPackage pkg =
+  sprintf "%s = callPackage ./%s {};" (sanitize pkg.name) pkg.name
+
+
 (*----------------------------------------------------------------------------*)
 let createTopLevel (dest : string) (pkgs : NixPkg array) : unit =
-  let sanitize (str : string) : string = str.Replace(".","")
-  let line pkg = sprintf "%s = callPackage ./%s {};" (sanitize pkg.name) pkg.name
-  Array.map line pkgs
-  |> Array.toSeq
-  |> String.concat "\n"
-  |> (fun it -> body.Replace("$deps", it))
-  |> (fun res -> File.WriteAllText(Path.Combine(dest, "top.nix"), res))
+
+  let topLevel =
+    Array.map callPackage (pkgs)
+    |> Array.toSeq
+    |> String.concat "\n"
+    |> (fun it -> body.Replace("$deps", it))
+
+  File.WriteAllText(Path.Combine(dest, "top.nix"), topLevel)
 

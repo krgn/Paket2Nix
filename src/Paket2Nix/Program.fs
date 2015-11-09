@@ -25,6 +25,10 @@ let main _ =
   if not <| File.Exists "./paket.lock"
   then failwith "paket.lock file not found! Are you in the project root?"
 
+  listProjects "."
+  |> List.iter (fun p -> printfn "%s" (p.ToString()))
+
+  (*
   let lockFile = parseLockFile "./paket.lock"
 
   let packages = 
@@ -33,7 +37,9 @@ let main _ =
 
   let dest = "./nix"
 
-  writeToDisk dest packages
-  createTopLevel dest packages
+  packages
+  |> (fun pkgs -> writeToDisk dest pkgs; pkgs)
+  |> createTopLevel dest
   
+  *)
   0
