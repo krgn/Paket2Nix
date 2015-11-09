@@ -179,7 +179,7 @@ type NixPkg =
    
     override self.ToString () =
       @"
-{ stdenv, fetchgit, fetchurl, mono $dependencies }:
+{ stdenv, fetchgit, fetchurl, fsharp, mono $dependencies }:
 
 stdenv.mkDerivation {
   name = ""$pkgname-$version"";
@@ -194,15 +194,18 @@ stdenv.mkDerivation {
 
   phases = [ ""unpackPhase"" ""patchPhase"" ""buildPhase"" ""installPhase"" ];
 
-  buildInputs = [ mono $inputs ];
+  buildInputs = [ fsharp mono $inputs ];
 
   patchPhase = ''
     mkdir -p packages
+    # remove imports to paket.targets now
 $linkcmds
   '';
 
   buildPhase = ''
-    mono packages/FAKE/tools/FAKE.exe build.fsx
+    export FSharpTargetsPath=${fsharp}/lib/mono/4.5/Microsoft.FSharp.Targets
+    export TargetFSharpCorePath=${fsharp}/lib/mono/4.5/FSharp.Core.dll
+    xbuild $name.sln
   '';
 
   installPhase = ''
