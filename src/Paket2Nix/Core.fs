@@ -125,7 +125,7 @@ let private collapse (sep : string)  =
   List.fold (fun m p -> m + sep + p) ""
 
 let private storePath =
-  sprintf @"${%s}/lib/mono/packages/%s-%s/"
+  sprintf @"${%s}/lib/mono/packages/%s-%s"
    
 (*----------------------------------------------------------------------------*)
 type NixPkg =
