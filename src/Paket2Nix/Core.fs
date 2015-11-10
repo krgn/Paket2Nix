@@ -198,7 +198,11 @@ stdenv.mkDerivation {
 
   patchPhase = ''
     mkdir -p packages
-    # remove imports to paket.targets now
+
+    find . -type f -iname '*.fsproj' -exec sed -i '/paket.targets/'d '{}'  \;
+    find . -type f -iname '*.csproj' -exec sed -i '/paket.targets/'d '{}'  \;
+    find . -type f -iname '*.vbproj' -exec sed -i '/paket.targets/'d '{}'  \;
+
 $linkcmds
   '';
 
