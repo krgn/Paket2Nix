@@ -443,14 +443,16 @@ $deps
 let private callPackage (san, norm, args) =
   sprintf "  %s = callPackage ./%s %s;" san norm args
 
-let private mkDeps (deps : string list) : string =
-  sprintf "{\n %s\n}" <| List.fold (fun m n -> m + "\n  " + (callPackage (sanitize n, n, "{}"))) "" deps
+let private mkDeps (dependencies : string list) : string =
+  let sep = Path.DirectorySeparatorChar
+  List.fold (fun m name -> callPackage (sanitize name, name, "{}")
+                           |> sprintf "%s%c  %s" m sep)
+  |> (fun fold -> fold "" dependencies)
+  |> (fun res -> sprintf "{%c %s %c}" sep res sep)
 
 (*----------------------------------------------------------------------------*)
 let createTopLevel (dest : string) (projs : NixPkg array) (deps : NixPkgDep array) : unit =
-  let namePairs =
-    Array.append <| Array.map (fun (p : NixPkgDep) -> (sanitize p.Name, p.Name, "{}")) deps
-                 <| Array.map (fun (p : NixPkg)    -> (sanitize p.Name, p.Name, mkDeps (p.Names()))) projs
+  let namePairs = Array.map (fun (p : NixPkg) -> (sanitize p.Name, p.Name, mkDeps (p.Names()))) projs
   let topLevel =
     Array.map callPackage namePairs
     |> Array.toSeq
