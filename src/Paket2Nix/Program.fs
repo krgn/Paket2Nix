@@ -27,7 +27,9 @@ let main _ =
   let destination = Path.Combine(root, "nix")
 
   if not <| File.Exists (Path.Combine(root, Constants.LockFileName))
-  then failwith "paket.lock file not found! Please run from project root."
+  then
+    printfn "paket.lock file not found! Please run from project root."
+    exit 1
 
   let packages = 
     deps2Nix root
