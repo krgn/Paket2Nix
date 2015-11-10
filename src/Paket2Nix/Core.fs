@@ -169,8 +169,20 @@ type NixPkg =
     member self.ExeCmd () =
       match self.Type with
         | ProjectOutputType.Exe ->
-          sprintf "#!/bin/sh\n ${mono}/bin/mono %s/%s/%s" (self.StorePath()) self.Name self.AssemblyName
+          sprintf @"
+    mkdir -p ""$out/bin"";
+    cat > ""$out/bin/$name"" <<-WRAPPER
+    #!/usr/bin/env bash
+    ${mono}/bin/mono $out/lib/mono/packages/$pkgname-$version/$name/$exe
+    WRAPPER
+    chmod a+x ""$out/bin/$name""
+"
+             |> spliceFields [ ("$name", sanitize self.Name)
+                             ; ("$pkgname", self.Name.ToLower())
+                             ; ("$version", self.Version.ToString())
+                             ; ("$exe", self.AssemblyName)]
         | _ -> ""
+
 
     member self.Names () =
       List.map (fun (p : NixPkgDep)-> p.Name) self.Dependencies
@@ -231,7 +243,7 @@ $linkcmds
          ; ("$method",       self.Method.ToString())
          ; ("$linkcmds",     self.LinkCmds())
          ; ("$outputdir",    self.OutputDir)
-         ; ("$exe",          "")
+         ; ("$exe",          self.ExeCmd())
          ]
 
 
