@@ -210,12 +210,12 @@ $linkcmds
   buildPhase = ''
     export FSharpTargetsPath=${fsharp}/lib/mono/4.5/Microsoft.FSharp.Targets
     export TargetFSharpCorePath=${fsharp}/lib/mono/4.5/FSharp.Core.dll
-    xbuild $name.sln
+    xbuild /nologo /verbosity:minimal /p:Configuration=""Release"" $name.sln
   '';
 
   installPhase = ''
     mkdir -p ""$out/lib/mono/packages/$pkgname-$version"";
-    cp -rv $outputdir/$name ""$out/lib/mono/packages/$pkgname-$version/$name""
+    cp -rv $outputdir ""$out/lib/mono/packages/$pkgname-$version/$name""
     $exe
   '';
 }"
