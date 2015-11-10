@@ -143,6 +143,7 @@ type NixPkg =
   ; Version      : SemVerInfo
   ; Method       : Method
   ; Authors      : string list
+  ; OutputDir    : string
   ; Description  : string option
   ; Dependencies : NixPkgDep list
   }
@@ -214,7 +215,7 @@ $linkcmds
 
   installPhase = ''
     mkdir -p ""$out/lib/mono/packages/$pkgname-$version"";
-    cp -rv ./bin/$name ""$out/lib/mono/packages/$pkgname-$version/$name""
+    cp -rv $outputdir/$name ""$out/lib/mono/packages/$pkgname-$version/$name""
     $exe
   '';
 }"
@@ -229,6 +230,7 @@ $linkcmds
          ; ("$inputs",       collapse " "  <| self.DepNames())
          ; ("$method",       self.Method.ToString())
          ; ("$linkcmds",     self.LinkCmds())
+         ; ("$outputdir",    self.OutputDir)
          ; ("$exe",          "")
          ]
 
@@ -335,7 +337,7 @@ let writeFiles (dest : string) (projs : NixPkg array) (deps : NixPkgDep array) :
 
 
 (*----------------------------------------------------------------------------*)
-let mkNixPkg (t, n : string, an : string, v, a, (u : string), d, ds) : Async<NixPkg> = 
+let mkNixPkg (t, n : string, an : string, v, a, (u : string), d, od, ds) : Async<NixPkg> = 
   async {
     let url = if u.Contains("github") then u + "/archive/master.tar.gz" else u
     let! res = Async.Catch(fetchSha256 url)
@@ -352,6 +354,7 @@ let mkNixPkg (t, n : string, an : string, v, a, (u : string), d, ds) : Async<Nix
            ; Method       = meth
            ; Authors      = a
            ; Description  = d
+           ; OutputDir    = od
            ; Dependencies = ds
            }
     }
@@ -359,6 +362,9 @@ let mkNixPkg (t, n : string, an : string, v, a, (u : string), d, ds) : Async<Nix
 (*----------------------------------------------------------------------------*)
 let readProject (tmpl : TemplateFile, project : ProjectFile, deps : NixPkgDep list) : Async<NixPkg> =
   let defVersion = SemVer.Parse("0.0.1")
+  let relPath =
+    Path.GetDirectoryName(project.FileName)
+        .Replace(Environment.CurrentDirectory + Path.DirectorySeparatorChar.ToString(),"")
 
   match tmpl.Contents with
     | CompleteInfo(core, optInfo) ->
@@ -369,6 +375,7 @@ let readProject (tmpl : TemplateFile, project : ProjectFile, deps : NixPkgDep li
       , core.Authors
       , defaultArg optInfo.ProjectUrl "<empty>"
       , Some(core.Description)
+      , Path.Combine(relPath, project.GetOutputDirectory "Release")
       , deps
       )
     | ProjectInfo(core, optInfo) ->
@@ -379,7 +386,8 @@ let readProject (tmpl : TemplateFile, project : ProjectFile, deps : NixPkgDep li
       , defaultArg core.Authors List.empty
       , defaultArg optInfo.ProjectUrl "<empty>"
       , core.Description
-      , deps
+      , Path.Combine(relPath, project.GetOutputDirectory "Release")
+      , deps 
       )
   |> mkNixPkg
 
