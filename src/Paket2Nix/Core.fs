@@ -33,6 +33,11 @@ type Rev     = string
 
 type Dependency = (string * string)
 
+type INixExpr =
+  abstract member ToNix : unit -> string 
+  abstract member Name  : string
+
+
 (*----------------------------------------------------------------------------*)
 let private sanitize (str : string) : string = str.Replace(".","")
 
@@ -74,11 +79,10 @@ type Method =
   | Nuget  of url : Url * sha256 : Sha256
   | Github of url : Url * sha256 : Sha256 * rev : Rev
 
-  with
-    override self.ToString () =
-      match self with
-        | Nuget(u, s)     -> nugetTmpl u s
-        | Github(u, s, r) -> gitTmpl u s r
+  override self.ToString() =
+    match self with
+      | Nuget(u, s)     -> nugetTmpl u s
+      | Github(u, s, r) -> gitTmpl u s r
 
 (*----------------------------------------------------------------------------*)
 let internal depPkgTmpl (name : Name) (version : Version) (meth : Method) =
@@ -113,8 +117,9 @@ type NixPkgDep =
   ; Version      : Version
   ; Method       : Method
   }
-  with
-   override self.ToString () =
+  interface INixExpr with
+    member self.Name = self.Name
+    member self.ToNix () =
       depPkgTmpl self.Name
                  self.Version
                  self.Method
@@ -134,64 +139,31 @@ let private quoted =
 let private storePath =
   sprintf @"${%s}/lib/mono/packages/%s-%s"
 
-   
-(*----------------------------------------------------------------------------*)
-type NixPkg =
-  { Type         : ProjectOutputType
-  ; Name         : Name
-  ; AssemblyName : Name
-  ; Version      : SemVerInfo
-  ; Method       : Method
-  ; Authors      : string list
-  ; OutputDir    : string
-  ; Description  : string option
-  ; Dependencies : NixPkgDep list
-  }
-  with
-    member self.GetUrl ()  =
-      match self.Method with
-        | Nuget(url, _) -> url
-        | Github(url, _, _) -> url
+let getUrl meth = 
+  match meth with
+    | Nuget(url, _)     -> url
+    | Github(url, _, _) -> url
 
-    member self.StorePath () =
-      storePath <| sanitize self.Name
-                <| self.Name.ToLower()
-                <| self.Version.ToString()
-
-    member self.LinkCmds () =
-      self.Dependencies
-      |> List.map
-        (fun pkg -> 
-          let s = storePath (sanitize pkg.Name) (pkg.Name.ToLower()) pkg.Version
-          sprintf @"    ln -s ""%s/%s"" ""packages/%s""" s pkg.Name pkg.Name)
-      |> List.fold (fun m cmd -> m + cmd + "\n") ""
-            
-    member self.ExeCmd () =
-      match self.Type with
-        | ProjectOutputType.Exe ->
-          sprintf @"
+let exeTmpl = @"
     mkdir -p ""$out/bin"";
     cat > ""$out/bin/$name"" <<-WRAPPER
     #!/usr/bin/env bash
     ${mono}/bin/mono $out/lib/mono/packages/$pkgname-$version/$name/$exe
     WRAPPER
-    chmod a+x ""$out/bin/$name""
-"
-             |> spliceFields [ ("$name", sanitize self.Name)
-                             ; ("$pkgname", self.Name.ToLower())
-                             ; ("$version", self.Version.ToString())
-                             ; ("$exe", self.AssemblyName)]
-        | _ -> ""
+    chmod a+x ""$out/bin/$name"" "
+
+let exeCmd t name version assembly =
+  match t with
+    | ProjectOutputType.Exe ->
+      exeTmpl
+      |> spliceFields [ ("$name",    sanitize name)
+                      ; ("$pkgname", name.ToLower())
+                      ; ("$version", version.ToString())
+                      ; ("$exe",     assembly) ]
+    | _ -> ""
 
 
-    member self.Names () =
-      List.map (fun (p : NixPkgDep)-> p.Name) self.Dependencies
-
-    member self.DepNames () =
-      List.map (fun p -> sanitize p) <| self.Names()
-   
-    override self.ToString () =
-      @"
+let private pkgTemplate = @"
 { stdenv, fetchgit, fetchurl, fsharp, mono $dependencies }:
 
 stdenv.mkDerivation {
@@ -231,20 +203,52 @@ $linkcmds
     $exe
   '';
 }"
-     |> spliceFields
-         [ ("$name",         self.Name)
-         ; ("$pkgname",      self.Name.ToLower())
-         ; ("$version",      self.Version.ToString())
-         ; ("$homepage",     self.GetUrl())
-         ; ("$maintainers",  quoted self.Authors)
-         ; ("$description",  defaultArg self.Description "<empty>")
-         ; ("$dependencies", collapse ", " <| self.DepNames())
-         ; ("$inputs",       collapse " "  <| self.DepNames())
-         ; ("$method",       self.Method.ToString())
-         ; ("$linkcmds",     self.LinkCmds())
-         ; ("$outputdir",    self.OutputDir)
-         ; ("$exe",          self.ExeCmd())
-         ]
+
+(*----------------------------------------------------------------------------*)
+type NixPkg =
+  { Type         : ProjectOutputType
+  ; Name         : Name
+  ; AssemblyName : Name
+  ; Version      : SemVerInfo
+  ; Method       : Method
+  ; Authors      : string list
+  ; OutputDir    : string
+  ; Description  : string option
+  ; Dependencies : NixPkgDep list
+  }
+
+  member self.LinkCmds = 
+    self.Dependencies
+    |> List.map
+      (fun pkg -> 
+        let s = storePath (sanitize pkg.Name) (pkg.Name.ToLower()) pkg.Version
+        sprintf @"    ln -s ""%s/%s"" ""packages/%s""" s pkg.Name pkg.Name)
+    |> List.fold (fun m cmd -> m + cmd + "\n") ""
+
+  member self.Names () =
+    List.map (fun (p : NixPkgDep)-> p.Name) self.Dependencies
+
+  member self.DepNames () =
+    List.map (fun p -> sanitize p) <| self.Names()
+  
+  interface INixExpr with
+    member self.Name  = self.Name
+    member self.ToNix () =
+      pkgTemplate
+      |> spliceFields
+          [ ("$name",         self.Name)
+          ; ("$pkgname",      self.Name.ToLower())
+          ; ("$version",      self.Version.ToString())
+          ; ("$homepage",     getUrl self.Method)
+          ; ("$maintainers",  quoted self.Authors)
+          ; ("$description",  defaultArg self.Description "<empty>")
+          ; ("$dependencies", collapse ", " <| self.DepNames())
+          ; ("$inputs",       collapse " "  <| self.DepNames())
+          ; ("$method",       self.Method.ToString())
+          ; ("$linkcmds",     self.LinkCmds)
+          ; ("$outputdir",    self.OutputDir)
+          ; ("$exe",          exeCmd self.Type self.Name self.Version self.AssemblyName)
+          ]
 
 
 (*----------------------------------------------------------------------------*)
@@ -321,27 +325,17 @@ let deps2Nix (root : String) : Async<NixPkgDep []> =
   |> Async.Parallel
 
 
+let compile dest (p : INixExpr) : (string * string) =
+  let target = Path.Combine(dest, p.Name)
+  if not <| Directory.Exists target
+  then Directory.CreateDirectory target |> ignore
+  (Path.Combine(target, "default.nix"), p.ToNix())
+
 (*----------------------------------------------------------------------------*)
 let writeFiles (dest : string) (projs : NixPkg array) (deps : NixPkgDep array) : unit =
-  printfn "Writing out dependencies"
   deps
-  |> Array.map
-    (fun p ->
-     let target = Path.Combine(dest, p.Name)
-     if not <| Directory.Exists target
-     then Directory.CreateDirectory target |> ignore
-     (Path.Combine(target, "default.nix"), p.ToString()))
-  |> Array.iter File.WriteAllText
-  |> ignore
-
-  printfn "... and projects ..."
-  projs
-  |> Array.map
-    (fun p ->
-     let target = Path.Combine(dest, p.Name)
-     if not <| Directory.Exists target
-     then Directory.CreateDirectory target |> ignore
-     (Path.Combine(target, "default.nix"), p.ToString()))
+  |> Array.map (compile dest)
+  |> Array.append (Array.map (compile dest) projs)
   |> Array.iter File.WriteAllText
   |> ignore
 
@@ -423,7 +417,6 @@ let getDeps (tmpl : TemplateFile) (deps : Dependencies) (pkgs : NixPkgDep array)
 (*----------------------------------------------------------------------------*)
 let listProjects (root : string) (pkgs : NixPkgDep array) : Async<NixPkg> seq =
   let deps = new Dependencies(Path.Combine(root, Constants.DependenciesFileName))
-
   (deps.ListTemplateFiles(), ProjectFile.FindAllProjects(root))
   |> (fun (tmpls, projs) ->
       List.map (fun tmpl -> (tmpl, findProject tmpl projs, Array.toList pkgs)) tmpls)
@@ -441,20 +434,23 @@ $deps
 
 (*----------------------------------------------------------------------------*)
 let private callPackage (san, norm, args) =
-  sprintf "  %s = callPackage ./%s %s;" san norm args
+  sprintf "   %s = callPackage ./%s %s;" san norm args
 
-let private mkDeps (dependencies : string list) : string =
-  let sep = Path.DirectorySeparatorChar
-  List.fold (fun m name -> callPackage (sanitize name, name, "{}")
-                           |> sprintf "%s%c  %s" m sep)
-  |> (fun fold -> fold "" dependencies)
-  |> (fun res -> sprintf "{%c %s %c}" sep res sep)
 
 (*----------------------------------------------------------------------------*)
-let createTopLevel (dest : string) (projs : NixPkg array) (deps : NixPkgDep array) : unit =
+let private mkDeps (dependencies : string list) : string =
+  let sep = Environment.NewLine
+  List.fold (fun m name -> callPackage (sanitize name, name, "{}")
+                           |> sprintf "%s%s %s" m sep)
+  |> (fun fold -> fold "" dependencies)
+  |> (fun res -> sprintf "{%s %s %s}" sep res sep)
+
+
+(*----------------------------------------------------------------------------*)
+let createTopLevel (dest : string) (projs : NixPkg array) : unit =
   Array.map (fun p -> (sanitize p.Name, p.Name, mkDeps (p.Names()))) projs
   |> Array.map callPackage
   |> Array.toSeq
-  |> String.concat (Path.DirectorySeparatorChar.ToString())
+  |> String.concat Environment.NewLine
   |> (fun it -> body.Replace("$deps", it))
   |> (fun top -> File.WriteAllText(Path.Combine(dest, "top.nix"), top))

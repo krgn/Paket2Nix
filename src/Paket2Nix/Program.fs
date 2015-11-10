@@ -39,6 +39,6 @@ let main _ =
     |> Async.RunSynchronously
 
   writeFiles destination projects packages
-  createTopLevel destination projects packages
+  createTopLevel destination projects
 
   0
