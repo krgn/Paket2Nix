@@ -452,12 +452,9 @@ let private mkDeps (dependencies : string list) : string =
 
 (*----------------------------------------------------------------------------*)
 let createTopLevel (dest : string) (projs : NixPkg array) (deps : NixPkgDep array) : unit =
-  let namePairs = Array.map (fun (p : NixPkg) -> (sanitize p.Name, p.Name, mkDeps (p.Names()))) projs
-  let topLevel =
-    Array.map callPackage namePairs
-    |> Array.toSeq
-    |> String.concat "\n"
-    |> (fun it -> body.Replace("$deps", it))
-
-  File.WriteAllText(Path.Combine(dest, "top.nix"), topLevel)
-  
+  Array.map (fun p -> (sanitize p.Name, p.Name, mkDeps (p.Names()))) projs
+  |> Array.map callPackage
+  |> Array.toSeq
+  |> String.concat (Path.DirectorySeparatorChar.ToString())
+  |> (fun it -> body.Replace("$deps", it))
+  |> (fun top -> File.WriteAllText(Path.Combine(dest, "top.nix"), top))
