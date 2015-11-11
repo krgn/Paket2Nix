@@ -147,7 +147,7 @@ let getUrl meth =
 let exeTmpl = @"
     mkdir -p ""$out/bin"";
     cat > ""$out/bin/$name"" <<-WRAPPER
-    #!/usr/bin/env bash
+    #!/bin/sh
     ${mono}/bin/mono $out/lib/mono/packages/$pkgname-$version/$name/$exe
     WRAPPER
     chmod a+x ""$out/bin/$name"" "
@@ -453,4 +453,4 @@ let createTopLevel (dest : string) (projs : NixPkg array) : unit =
   |> Array.toSeq
   |> String.concat Environment.NewLine
   |> (fun it -> body.Replace("$deps", it))
-  |> (fun top -> File.WriteAllText(Path.Combine(dest, "top.nix"), top))
+  |> (fun top -> File.WriteAllText(Path.Combine(dest, "default.nix"), top))
