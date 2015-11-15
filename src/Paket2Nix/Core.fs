@@ -37,6 +37,12 @@ type INixExpr =
   abstract member ToNix : unit -> string 
   abstract member Name  : string
 
+type AppCnf =
+  { Root        : string
+  ; Verbose     : bool
+  ; Checksum    : bool
+  ; Destination : string
+  }
 
 (*----------------------------------------------------------------------------*)
 let private sanitize (str : string) : string = str.Replace(".","")
@@ -283,7 +289,7 @@ let downloadUrl (pkgres : PackageResolver.ResolvedPackage) : string =
 
 
 (*----------------------------------------------------------------------------*)
-let pkgToNix (pkgres : PackageResolver.ResolvedPackage) : Async<NixPkgDep> =
+let pkgToNix (config : AppCnf) (pkgres : PackageResolver.ResolvedPackage) : Async<NixPkgDep> =
   async {
     let name =
       match pkgres.Name with
@@ -292,16 +298,21 @@ let pkgToNix (pkgres : PackageResolver.ResolvedPackage) : Async<NixPkgDep> =
     let version = pkgres.Version.ToString()
     let url = downloadUrl pkgres
 
-    printfn "%s: building checksum" url
+    if config.Checksum && config.Verbose
+    then printfn "%s: building checksum" url
 
-    let! result = Async.Catch(fetchSha256 url) 
+    let! result =
+      if config.Checksum
+      then Async.Catch(fetchSha256 url)
+      else async { return Choice1Of2"<empty>" }
 
     let sha =
       match result with
         | Choice1Of2 sha -> sha
         | Choice2Of2 exn -> exn.Message
 
-    printfn "%s: %s" url sha
+    if config.Checksum && config.Verbose
+    then printfn "%s: %s" url sha
 
     return { Name    = name
            ; Version = version
@@ -310,17 +321,17 @@ let pkgToNix (pkgres : PackageResolver.ResolvedPackage) : Async<NixPkgDep> =
 
 
 (*----------------------------------------------------------------------------*)
-let parseGroup (group : LockFileGroup) : Async<NixPkgDep> seq =
-  List.map (snd >> pkgToNix) (Map.toList group.Resolution)
+let parseGroup (config : AppCnf) (group : LockFileGroup) : Async<NixPkgDep> seq =
+  List.map (snd >> pkgToNix config) (Map.toList group.Resolution)
   |> List.toSeq
 
 
 (*----------------------------------------------------------------------------*)
-let deps2Nix (root : String) : Async<NixPkgDep []> =
-  Path.Combine(root, Constants.LockFileName)
+let deps2Nix (config : AppCnf) : Async<NixPkgDep []> =
+  Path.Combine(config.Root, Constants.LockFileName)
   |> parseLockFile
   |> (fun lockFile -> Map.toSeq lockFile.Groups)
-  |> Seq.map (snd >> parseGroup)
+  |> Seq.map (snd >> parseGroup config)
   |> Seq.fold (fun m l -> Seq.append m l) Seq.empty
   |> Async.Parallel
 
@@ -332,21 +343,27 @@ let compile dest (p : INixExpr) : (string * string) =
   (Path.Combine(target, "default.nix"), p.ToNix())
 
 (*----------------------------------------------------------------------------*)
-let writeFiles (dest : string) (projs : NixPkg array) (deps : NixPkgDep array) : unit =
+let writeFiles (config : AppCnf) (projs : NixPkg array) (deps : NixPkgDep array) : unit =
   deps
-  |> Array.map (compile dest)
-  |> Array.append (Array.map (compile dest) projs)
+  |> Array.map (compile config.Destination)
+  |> Array.append (Array.map (compile config.Destination) projs)
   |> Array.iter File.WriteAllText
   |> ignore
 
   printfn "done!"
 
-
 (*----------------------------------------------------------------------------*)
-let mkNixPkg (t, n : string, an : string, v, a, (u : string), d, od, ds) : Async<NixPkg> = 
+let mkNixPkg (cnf : AppCnf) (t, n : string, an : string, v, a, (u : string), d, od, ds) : Async<NixPkg> = 
   async {
     let url = if u.Contains("github") then u + "/archive/master.tar.gz" else u
-    let! res = Async.Catch(fetchSha256 url)
+
+    if cnf.Checksum && cnf.Verbose
+    then printfn "downloading and building checksum for %s" n
+
+    let! res =
+      if cnf.Checksum
+      then Async.Catch(fetchSha256 url)
+      else async { return Choice1Of2 "<empty>" }
 
     let meth =
       match res with
@@ -366,7 +383,7 @@ let mkNixPkg (t, n : string, an : string, v, a, (u : string), d, od, ds) : Async
     }
 
 (*----------------------------------------------------------------------------*)
-let readProject (tmpl : TemplateFile, project : ProjectFile, deps : NixPkgDep list) : Async<NixPkg> =
+let readProject (config : AppCnf) (tmpl : TemplateFile, project : ProjectFile, deps : NixPkgDep list) : Async<NixPkg> =
   let defVersion = SemVer.Parse("0.0.1")
   let relPath =
     Path.GetDirectoryName(project.FileName)
@@ -395,7 +412,7 @@ let readProject (tmpl : TemplateFile, project : ProjectFile, deps : NixPkgDep li
       , Path.Combine(relPath, project.GetOutputDirectory "Release")
       , deps 
       )
-  |> mkNixPkg
+  |> mkNixPkg config
 
 
 (*----------------------------------------------------------------------------*)
@@ -415,12 +432,12 @@ let getDeps (tmpl : TemplateFile) (deps : Dependencies) (pkgs : NixPkgDep array)
 
 
 (*----------------------------------------------------------------------------*)
-let listProjects (root : string) (pkgs : NixPkgDep array) : Async<NixPkg> seq =
-  let deps = new Dependencies(Path.Combine(root, Constants.DependenciesFileName))
-  (deps.ListTemplateFiles(), ProjectFile.FindAllProjects(root))
+let listProjects (config : AppCnf) (pkgs : NixPkgDep array) : Async<NixPkg> seq =
+  let deps = new Dependencies(Path.Combine(config.Root, Constants.DependenciesFileName))
+  (deps.ListTemplateFiles(), ProjectFile.FindAllProjects(config.Root))
   |> (fun (tmpls, projs) ->
       List.map (fun tmpl -> (tmpl, findProject tmpl projs, Array.toList pkgs)) tmpls)
-  |> List.map readProject
+  |> List.map (readProject config)
   |> List.toSeq
 
 
@@ -447,10 +464,10 @@ let private mkDeps (dependencies : string list) : string =
 
 
 (*----------------------------------------------------------------------------*)
-let createTopLevel (dest : string) (projs : NixPkg array) : unit =
+let createTopLevel (config : AppCnf) (projs : NixPkg array) : unit =
   Array.map (fun p -> (sanitize p.Name, p.Name, mkDeps (p.Names()))) projs
   |> Array.map callPackage
   |> Array.toSeq
   |> String.concat Environment.NewLine
   |> (fun it -> body.Replace("$deps", it))
-  |> (fun top -> File.WriteAllText(Path.Combine(dest, "default.nix"), top))
+  |> (fun top -> File.WriteAllText(Path.Combine(config.Destination, "default.nix"), top))

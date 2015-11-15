@@ -17,30 +17,65 @@
 
 module Paket2Nix.Main
 
+open System
 open System.IO
 open Paket
 open Paket2Nix.Core
+open Nessos.Argu
+
+type Args =
+  | Checksum 
+  | Verbose
+  | Output_Directory  of string
+  | Working_Directory of string
+  with
+    interface IArgParserTemplate with
+      member s.Usage =
+        match s with
+        | Working_Directory _ -> "specify a working directory."
+        | Output_Directory  _ -> "specify an output direcory for created derivations (defaults to ./nix)"
+        | Verbose           _ -> "verbose output"
+        | Checksum          _ -> "attempt to download and calculate checksums for packages"
+
+let parser = ArgumentParser.Create<Args>()
+
+// get usage text
+let usage = parser.Usage()
+
+let bail str =
+  printfn "%s" str
+  printfn "%s" usage
+  exit 1
 
 [<EntryPoint>]
-let main _ =
-  let root = "."
-  let destination = Path.Combine(root, "nix")
+let main rawargs =
 
-  if not <| File.Exists (Path.Combine(root, Constants.LockFileName))
-  then
-    printfn "paket.lock file not found! Please run from project root."
-    exit 1
+  let args =
+    try parser.Parse(rawargs)
+    with
+      | exn -> bail exn.Message
+
+  let config =
+    let root = args.GetResult(<@ Working_Directory @>, defaultValue = ".")
+    { Root        = root
+    ; Verbose     = args.Contains <@ Verbose @>
+    ; Checksum    = args.Contains <@ Checksum @>
+    ; Destination = args.GetResult(<@ Output_Directory @>, defaultValue = Path.Combine(root, "nix"))
+    }
+
+  if not <| File.Exists (Path.Combine(config.Root, Constants.LockFileName))
+  then bail "paket.lock file not found! Please specify --working-directory=/path/to/project or run from project root."
 
   let packages = 
-    deps2Nix root
+    deps2Nix config
     |> Async.RunSynchronously
 
   let projects = 
-    listProjects root packages
+    listProjects config packages
     |> Async.Parallel
     |> Async.RunSynchronously
 
-  writeFiles destination projects packages
-  createTopLevel destination projects
+  writeFiles config projects packages
+  createTopLevel config projects
 
   0
