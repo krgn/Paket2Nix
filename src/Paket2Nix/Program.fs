@@ -26,16 +26,16 @@ open Nessos.Argu
 type Args =
   | Checksum 
   | Verbose
-  | Output_Directory  of string
-  | Working_Directory of string
+  | Dest_Dir  of string
+  | Project_Dir of string
   with
     interface IArgParserTemplate with
       member s.Usage =
         match s with
-        | Working_Directory _ -> "specify a working directory."
-        | Output_Directory  _ -> "specify an output direcory for created derivations (defaults to ./nix)"
-        | Verbose           _ -> "verbose output"
-        | Checksum          _ -> "attempt to download and calculate checksums for packages"
+        | Project_Dir _ -> "specify a working directory."
+        | Dest_Dir    _ -> "specify an output direcory for created derivations (defaults to ./nix)"
+        | Verbose     _ -> "verbose output"
+        | Checksum    _ -> "attempt to download and calculate checksums for packages"
 
 let parser = ArgumentParser.Create<Args>()
 
@@ -56,11 +56,11 @@ let main rawargs =
       | exn -> bail exn.Message
 
   let config =
-    let root = args.GetResult(<@ Working_Directory @>, defaultValue = ".")
+    let root = args.GetResult(<@ Project_Dir @>, defaultValue = ".")
     { Root        = root
     ; Verbose     = args.Contains <@ Verbose @>
     ; Checksum    = args.Contains <@ Checksum @>
-    ; Destination = args.GetResult(<@ Output_Directory @>, defaultValue = Path.Combine(root, "nix"))
+    ; Destination = args.GetResult(<@ Dest_Dir @>, defaultValue = Path.Combine(root, "nix"))
     }
 
   if not <| File.Exists (Path.Combine(config.Root, Constants.LockFileName))
