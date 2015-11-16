@@ -44,7 +44,6 @@ let usage = parser.Usage()
 
 let bail str =
   printfn "%s" str
-  printfn "%s" usage
   exit 1
 
 [<EntryPoint>]

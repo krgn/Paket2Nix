@@ -109,12 +109,11 @@ stdenv.mkDerivation {
     unzip -x ""$src"" -d ""$out/lib/mono/packages/$pkgname-$version/$name"";
   '';
 }
-"
-  |> spliceFields
-       [ ("$pkgname",  (name.ToLower()))
-       ; ("$name"   ,  name            )
-       ; ("$version",  version         )
-       ; ("$method" ,  meth.ToString() )
+" |> spliceFields
+       [ ("$pkgname", name.ToLower())
+       ; ("$name"   , name)
+       ; ("$version", version)
+       ; ("$method" , meth.ToString())
        ]
 
 (*----------------------------------------------------------------------------*)
@@ -152,19 +151,20 @@ let getUrl meth =
 
 let exeTmpl = @"
     mkdir -p ""$out/bin"";
-    cat > ""$out/bin/$name"" <<-WRAPPER
+    cat > ""$out/bin/$script"" <<-WRAPPER
     #!/bin/sh
-    ${mono}/bin/mono $out/lib/mono/packages/$pkgname-$version/$name/$exe
+    ${mono}/bin/mono $out/lib/mono/packages/$pkgname-$version/$name/$exe ""\$@""
     WRAPPER
-    chmod a+x ""$out/bin/$name"" "
+    chmod a+x ""$out/bin/$script"" "
 
-let exeCmd t name version assembly =
+let exeCmd t (name : string) version (assembly : string) =
   match t with
     | ProjectOutputType.Exe ->
       exeTmpl
       |> spliceFields [ ("$name",    sanitize name)
                       ; ("$pkgname", name.ToLower())
                       ; ("$version", version.ToString())
+                      ; ("$script",  name.ToLower() |> sanitize)
                       ; ("$exe",     assembly) ]
     | _ -> ""
 
