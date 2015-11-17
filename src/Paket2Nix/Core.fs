@@ -19,6 +19,7 @@ module Paket2Nix.Core
 
 open System
 open System.IO
+open System.Reflection
 open System.Security.Cryptography
 open Microsoft.FSharp.Control 
 open System.Net
@@ -384,10 +385,25 @@ let mkNixPkg (cnf : AppCnf) (t, n : string, an : string, v, a, (u : string), d, 
 
 (*----------------------------------------------------------------------------*)
 let readProject (config : AppCnf) (tmpl : TemplateFile, project : ProjectFile, deps : NixPkgDep list) : Async<NixPkg> =
-  let defVersion = SemVer.Parse("0.0.1")
   let relPath =
     Path.GetDirectoryName(project.FileName)
-        .Replace(Environment.CurrentDirectory + Path.DirectorySeparatorChar.ToString(),"")
+        .Replace(Environment.CurrentDirectory +
+                 Path.DirectorySeparatorChar.ToString(),"")
+
+  let apath =
+    Path.Combine(relPath,
+                 project.GetOutputDirectory "Release",
+                 project.GetAssemblyName())
+
+  let defVersion =
+    try
+      SemVer.Parse(Assembly
+                  .LoadFile(apath)
+                  .GetName()
+                  .Version
+                  .ToString())
+    with
+      | _ -> SemVer.Parse("0.0.0.0")
 
   match tmpl.Contents with
     | CompleteInfo(core, optInfo) ->
