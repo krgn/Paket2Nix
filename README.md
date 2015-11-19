@@ -3,16 +3,13 @@
 
 # Paket2Nix
 
-Create `nix` expressions for projects managed with `Paket`.
+Create [`nix`](https://nixos.org/nix/) expressions for projects managed with
+[`Paket`](https://github.com/fsprojects/Paket) for ad-hoc packaging of `.NET` applications
+and libraries.
 
-# Status:
-
-Currently still mostly a proof of concept, the tool can already be used to take
-the edge off of working with `.NET` projects on `nix`/`NixOS`.
-
-It is, however, not quite as pure as I'd like it to be, since dependencies are
-not built from source. Its certainly possible to do this, but not practical
-at this point and harder to automate.
+`Paket2Nix` resolves all dependencies via `Pakets` lock file, collects relevant
+metadata and finally writes out `nix` expressions to disk. It also attempts to
+calculate `sha256` checksums for all dependencies and the main package.
 
 # Usage:
 
@@ -20,15 +17,13 @@ TLDR;
 
 ```shell
 $ cd /path/to/project/root
-$ Paket2Nix 
+$ paket2nix
 $ cd ./nix
-$ nix-build -K top.nix -A $PROJECT_NAME
-$ nix-env -i -f top.nix -A $PROJECT_NAME
+$ nix-build -K default.nix -A $PROJECT_NAME
+$ nix-env -i -f default.nix -A $PROJECT_NAME
 ```
 
-Paket2Nix reads `Paket` and project metadata to automate the building of `nix`
-expressions as much as possible. It downloads and calculates checksums for all
-dependencies and creates expressions accordingly.
+# Feedback
 
-It also detects the type of projects (executable/library) and creates wrapper
-scripts for executable targets.
+If you'd like improvements to this tool, please don't hesitate to open an issue
+or even PR!
