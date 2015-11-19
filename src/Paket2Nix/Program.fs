@@ -26,37 +26,36 @@ open Nessos.Argu
 type Args =
   | Checksum 
   | Verbose
-  | Dest_Dir  of string
-  | Project_Dir of string
+  | Download_Url of string
+  | Dest_Dir     of string
+  | Project_Dir  of string
   with
     interface IArgParserTemplate with
       member s.Usage =
         match s with
-        | Project_Dir _ -> "specify a working directory."
-        | Dest_Dir    _ -> "specify an output direcory for created derivations (defaults to ./nix)"
-        | Verbose     _ -> "verbose output"
-        | Checksum    _ -> "attempt to download and calculate checksums for packages"
+        | Project_Dir  _ -> "specify a working directory."
+        | Dest_Dir     _ -> "specify an output direcory for created derivations (defaults to ./nix)"
+        | Download_Url _ -> "where to download a tarball from"
+        | Verbose      _ -> "verbose output"
+        | Checksum     _ -> "attempt to download and calculate checksums for packages"
 
 let parser = ArgumentParser.Create<Args>()
 
 // get usage text
 let usage = parser.Usage()
 
-let bail str =
-  printfn "%s" str
-  exit 1
-
 [<EntryPoint>]
-let main rawargs =
+let main raw =
 
   let args =
-    try parser.Parse(rawargs)
+    try parser.Parse(raw)
     with
       | exn -> bail exn.Message
 
   let config =
     let root = args.GetResult(<@ Project_Dir @>, defaultValue = ".")
     { Root        = root
+    ; Url         = if args.Contains <@ Download_Url @> then Some(args.GetResult(<@ Download_Url @>)) else None
     ; Verbose     = args.Contains <@ Verbose @>
     ; Checksum    = args.Contains <@ Checksum @>
     ; Destination = args.GetResult(<@ Dest_Dir @>, defaultValue = Path.Combine(root, "nix"))

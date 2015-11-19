@@ -40,10 +40,16 @@ type INixExpr =
 
 type AppCnf =
   { Root        : string
+  ; Url         : string option
   ; Verbose     : bool
   ; Checksum    : bool
   ; Destination : string
   }
+
+(*----------------------------------------------------------------------------*)
+let bail str =
+  printfn "%s" str
+  exit 1
 
 (*----------------------------------------------------------------------------*)
 let private sanitize (str : string) : string = str.Replace(".","")
@@ -356,7 +362,10 @@ let writeFiles (config : AppCnf) (projs : NixPkg array) (deps : NixPkgDep array)
 (*----------------------------------------------------------------------------*)
 let mkNixPkg (cnf : AppCnf) (t, n : string, an : string, v, a, (u : string), d, od, ds) : Async<NixPkg> = 
   async {
-    let url = if u.Contains("github") then u + "/archive/master.tar.gz" else u
+    let url =
+      if Option.isSome(cnf.Url)
+      then Option.get(cnf.Url)
+      else if u.Contains("github") then u + "/archive/master.tar.gz" else u
 
     if cnf.Checksum && cnf.Verbose
     then printfn "downloading and building checksum for %s" n
