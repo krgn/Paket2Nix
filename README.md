@@ -1,5 +1,6 @@
 [![Issue Stats](http://issuestats.com/github/krgn/Paket2Nix/badge/issue)](http://issuestats.com/github/krgn/Paket2Nix)
 [![Issue Stats](http://issuestats.com/github/krgn/Paket2Nix/badge/pr)](http://issuestats.com/github/krgn/Paket2Nix)
+[![Build status](https://ci.appveyor.com/api/projects/status/5yu6k3vjsdnmhlcj?svg=true)](https://ci.appveyor.com/project/krgn/paket2nix)
 
 # Paket2Nix
 
