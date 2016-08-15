@@ -21,10 +21,10 @@ open System
 open System.IO
 open Paket
 open Paket2Nix.Core
-open Nessos.Argu
+open Argu
 
 type Args =
-  | Checksum 
+  | Checksum
   | Verbose
   | Download_Url of string
   | Dest_Dir     of string
@@ -40,9 +40,6 @@ type Args =
         | Checksum     _ -> "attempt to download and calculate checksums for packages"
 
 let parser = ArgumentParser.Create<Args>()
-
-// get usage text
-let usage = parser.Usage()
 
 [<EntryPoint>]
 let main raw =
@@ -64,11 +61,11 @@ let main raw =
   if not <| File.Exists (Path.Combine(config.Root, Constants.LockFileName))
   then bail "paket.lock file not found! Please specify --working-directory=/path/to/project or run from project root."
 
-  let packages = 
+  let packages =
     deps2Nix config
     |> Async.RunSynchronously
 
-  let projects = 
+  let projects =
     listProjects config packages
     |> Async.Parallel
     |> Async.RunSynchronously

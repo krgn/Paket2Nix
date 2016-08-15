@@ -21,7 +21,7 @@ open System
 open System.IO
 open System.Reflection
 open System.Security.Cryptography
-open Microsoft.FSharp.Control 
+open Microsoft.FSharp.Control
 open System.Net
 open Paket
 open Paket.Domain
@@ -35,7 +35,7 @@ type Rev     = string
 type Dependency = (string * string)
 
 type INixExpr =
-  abstract member ToNix : unit -> string 
+  abstract member ToNix : unit -> string
   abstract member Name  : string
 
 type AppCnf =
@@ -46,30 +46,30 @@ type AppCnf =
   ; Destination : string
   }
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let bail str =
   printfn "%s" str
   exit 1
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let private sanitize (str : string) : string = str.Replace(".","")
 
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let serializeType (t : ProjectOutputType) : string =
   match t with
     | ProjectOutputType.Exe     -> "exe"
     | ProjectOutputType.Library -> "library"
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let internal replace (from : string) (two : string) (target : string) =
   target.Replace(from,two)
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let internal spliceFields (attrs : (string * string) list) (tmpl : string) : string =
   List.fold (fun m (expr, value) -> replace expr value m) tmpl attrs
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let internal gitTmpl (url : Url) (sha : Sha256) (rev : Rev) =
   @"fetchgit {
     url    = ""$url"";
@@ -78,7 +78,7 @@ let internal gitTmpl (url : Url) (sha : Sha256) (rev : Rev) =
   }"
   |> spliceFields [("$url", url); ("$sha", sha); ("$rev", rev)]
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let internal nugetTmpl (url : Url) (sha : Sha256) =
   @"fetchurl {
     url    = ""$url"";
@@ -87,7 +87,7 @@ let internal nugetTmpl (url : Url) (sha : Sha256) =
   |> spliceFields [("$url", url); ("$sha", sha)]
 
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 type Method =
   | Nuget  of url : Url * sha256 : Sha256
   | Github of url : Url * sha256 : Sha256 * rev : Rev
@@ -97,7 +97,7 @@ type Method =
       | Nuget(u, s)     -> nugetTmpl u s
       | Github(u, s, r) -> gitTmpl u s r
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let internal depPkgTmpl (name : Name) (version : Version) (meth : Method) =
   @"
 { stdenv, fetchgit, fetchurl, unzip }:
@@ -123,7 +123,7 @@ stdenv.mkDerivation {
        ; ("$method" , meth.ToString())
        ]
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 type NixPkgDep =
   { Name         : Name
   ; Version      : Version
@@ -137,21 +137,21 @@ type NixPkgDep =
                  self.Method
 
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let private collapse (sep : string)  =
   List.fold (fun m p -> m + sep + p) ""
 
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let private quoted =
   List.fold (fun m p -> m + (sprintf @" ""%s""" p)) ""
 
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let private storePath =
   sprintf @"${%s}/lib/mono/packages/%s-%s"
 
-let getUrl meth = 
+let getUrl meth =
   match meth with
     | Nuget(url, _)     -> url
     | Github(url, _, _) -> url
@@ -217,7 +217,7 @@ $linkcmds
   '';
 }"
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 type NixPkg =
   { Type         : ProjectOutputType
   ; Name         : Name
@@ -230,10 +230,10 @@ type NixPkg =
   ; Dependencies : NixPkgDep list
   }
 
-  member self.LinkCmds = 
+  member self.LinkCmds =
     self.Dependencies
     |> List.map
-      (fun pkg -> 
+      (fun pkg ->
         let s = storePath (sanitize pkg.Name) (pkg.Name.ToLower()) pkg.Version
         sprintf @"    ln -s ""%s/%s"" ""packages/%s""" s pkg.Name pkg.Name)
     |> List.fold (fun m cmd -> m + cmd + "\n") ""
@@ -243,7 +243,7 @@ type NixPkg =
 
   member self.DepNames () =
     List.map (fun p -> sanitize p) <| self.Names()
-  
+
   interface INixExpr with
     member self.Name  = self.Name
     member self.ToNix () =
@@ -264,16 +264,16 @@ type NixPkg =
           ]
 
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let parseLockFile path =
   LockFile.LoadFrom path
 
 
-(*----------------------------------------------------------------------------*)
-let fetchSha256 (url : string) : Async<string> = 
+(* ---------------------------------------------------------------------------- *)
+let fetchSha256 (url : string) : Async<string> =
   async {
     use wc = new WebClient()
-  
+
     let! bytes = wc.AsyncDownloadData(new Uri(url))
 
     let sum =
@@ -286,21 +286,21 @@ let fetchSha256 (url : string) : Async<string> =
   }
 
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let downloadUrl (pkgres : PackageResolver.ResolvedPackage) : string =
   let version = pkgres.Version.ToString()
   let name =
     match pkgres.Name with
-      | PackageName(_, l) -> l
+      | Domain.PackageName(_, l) -> l
   sprintf "https://api.nuget.org/packages/%s.%s.nupkg" name version
 
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let pkgToNix (config : AppCnf) (pkgres : PackageResolver.ResolvedPackage) : Async<NixPkgDep> =
   async {
     let name =
       match pkgres.Name with
-        | PackageName(u, _) -> u
+        | Domain.PackageName(u, _) -> u
 
     let version = pkgres.Version.ToString()
     let url = downloadUrl pkgres
@@ -327,13 +327,13 @@ let pkgToNix (config : AppCnf) (pkgres : PackageResolver.ResolvedPackage) : Asyn
   }
 
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let parseGroup (config : AppCnf) (group : LockFileGroup) : Async<NixPkgDep> seq =
   List.map (snd >> pkgToNix config) (Map.toList group.Resolution)
   |> List.toSeq
 
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let deps2Nix (config : AppCnf) : Async<NixPkgDep []> =
   Path.Combine(config.Root, Constants.LockFileName)
   |> parseLockFile
@@ -349,7 +349,7 @@ let compile dest (p : INixExpr) : (string * string) =
   then Directory.CreateDirectory target |> ignore
   (Path.Combine(target, "default.nix"), p.ToNix())
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let writeFiles (config : AppCnf) (projs : NixPkg array) (deps : NixPkgDep array) : unit =
   deps
   |> Array.map (compile config.Destination)
@@ -359,8 +359,8 @@ let writeFiles (config : AppCnf) (projs : NixPkg array) (deps : NixPkgDep array)
 
   printfn "done!"
 
-(*----------------------------------------------------------------------------*)
-let mkNixPkg (cnf : AppCnf) (t, n : string, an : string, v, a, (u : string), d, od, ds) : Async<NixPkg> = 
+(* ---------------------------------------------------------------------------- *)
+let mkNixPkg (cnf : AppCnf) (t, n : string, an : string, v, a, (u : string), d, od, ds) : Async<NixPkg> =
   async {
     let url =
       if Option.isSome(cnf.Url)
@@ -392,7 +392,7 @@ let mkNixPkg (cnf : AppCnf) (t, n : string, an : string, v, a, (u : string), d, 
            }
     }
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let readProject (config : AppCnf) (tmpl : TemplateFile, project : ProjectFile, deps : NixPkgDep list) : Async<NixPkg> =
   let relPath =
     Path.GetDirectoryName(project.FileName)
@@ -401,7 +401,7 @@ let readProject (config : AppCnf) (tmpl : TemplateFile, project : ProjectFile, d
 
   let apath =
     Path.Combine(relPath,
-                 project.GetOutputDirectory "Release",
+                 project.GetOutputDirectory "Release" "AnyCpu",
                  project.GetAssemblyName())
 
   let defVersion =
@@ -423,7 +423,7 @@ let readProject (config : AppCnf) (tmpl : TemplateFile, project : ProjectFile, d
       , core.Authors
       , defaultArg optInfo.ProjectUrl "<empty>"
       , Some(core.Description)
-      , Path.Combine(relPath, project.GetOutputDirectory "Release")
+      , Path.Combine(relPath, project.GetOutputDirectory "Release" "AnyCpu" )
       , deps
       )
     | ProjectInfo(core, optInfo) ->
@@ -434,20 +434,20 @@ let readProject (config : AppCnf) (tmpl : TemplateFile, project : ProjectFile, d
       , defaultArg core.Authors List.empty
       , defaultArg optInfo.ProjectUrl "<empty>"
       , core.Description
-      , Path.Combine(relPath, project.GetOutputDirectory "Release")
-      , deps 
+      , Path.Combine(relPath, project.GetOutputDirectory "Release" "AnyCpu")
+      , deps
       )
   |> mkNixPkg config
 
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let findProject (tmpl : TemplateFile) (projects : ProjectFile array) : ProjectFile =
   let basePath = Path.GetDirectoryName(tmpl.FileName)
   Array.find (fun p -> Path.GetDirectoryName(p.FileName) = basePath) projects
 
 
-(*----------------------------------------------------------------------------*)
-let getDeps (tmpl : TemplateFile) (deps : Dependencies) (pkgs : NixPkgDep array) : NixPkgDep list = 
+(* ---------------------------------------------------------------------------- *)
+let getDeps (tmpl : TemplateFile) (deps : Dependencies) (pkgs : NixPkgDep array) : NixPkgDep list =
   let path = Path.Combine(Path.GetDirectoryName(tmpl.FileName), Constants.ReferencesFile)
   if File.Exists path
   then
@@ -456,7 +456,7 @@ let getDeps (tmpl : TemplateFile) (deps : Dependencies) (pkgs : NixPkgDep array)
   else List.empty
 
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let listProjects (config : AppCnf) (pkgs : NixPkgDep array) : Async<NixPkg> seq =
   let deps = new Dependencies(Path.Combine(config.Root, Constants.DependenciesFileName))
   (deps.ListTemplateFiles(), ProjectFile.FindAllProjects(config.Root))
@@ -466,7 +466,7 @@ let listProjects (config : AppCnf) (pkgs : NixPkgDep array) : Async<NixPkg> seq 
   |> List.toSeq
 
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let internal body = @"
 with import <nixpkgs> {};
 {
@@ -474,12 +474,12 @@ $deps
 }"
 
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let private callPackage (san, norm, args) =
   sprintf "   %s = callPackage ./%s %s;" san norm args
 
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let private mkDeps (dependencies : string list) : string =
   let sep = Environment.NewLine
   List.fold (fun m name -> callPackage (sanitize name, name, "{}")
@@ -488,7 +488,7 @@ let private mkDeps (dependencies : string list) : string =
   |> (fun res -> sprintf "{%s %s %s}" sep res sep)
 
 
-(*----------------------------------------------------------------------------*)
+(* ---------------------------------------------------------------------------- *)
 let createTopLevel (config : AppCnf) (projs : NixPkg array) : unit =
   Array.map (fun p -> (sanitize p.Name, p.Name, mkDeps (p.Names()))) projs
   |> Array.map callPackage
